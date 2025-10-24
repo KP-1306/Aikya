@@ -1,6 +1,9 @@
+// app/layout.tsx
 import "../styles/globals.css";
 import type { Metadata } from "next";
 import { clsx } from "clsx";
+import Link from "next/link";
+import NavUser from "@/components/NavUser";
 
 export const metadata: Metadata = {
   title: "Aikya — Good Around You",
@@ -30,16 +33,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={clsx("min-h-screen bg-neutral-50")}>
         <header className="border-b bg-white/70 backdrop-blur">
           <div className="container flex items-center justify-between h-16">
-            <a href="/" className="flex items-center gap-2 font-semibold">
+            <Link href="/" className="flex items-center gap-2 font-semibold">
               <span className="text-brand">☀️ Aikya</span>News
-            </a>
-            <nav className="flex items-center gap-4 text-sm">
-              <a href="/submit" className="hover:underline">Submit</a>
-              <a href="/about" className="hover:underline">About</a>
-              <a href="/signin" className="rounded-full bg-brand text-white px-4 py-1.5">
-                Sign in
-              </a>
-            </nav>
+            </Link>
+
+            {/* right side of the nav */}
+            <div className="flex items-center gap-4 text-sm">
+              <Link href="/submit" className="hover:underline">Submit</Link>
+              <Link href="/about" className="hover:underline">About</Link>
+              {/* account menu */}
+              {/* @ts-expect-error Server Component in layout */}
+              <NavUser />
+            </div>
           </div>
         </header>
 
@@ -49,8 +54,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="container flex justify-between">
             <p>© {new Date().getFullYear()} Aikya</p>
             <p>
-              <a href="/privacy" className="hover:underline">Privacy</a>{" · "}
-              <a href="/terms" className="hover:underline">Terms</a>
+              <Link href="/privacy" className="hover:underline">Privacy</Link>{" · "}
+              <Link href="/terms" className="hover:underline">Terms</Link>
             </p>
           </div>
         </footer>
