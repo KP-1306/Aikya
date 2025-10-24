@@ -1,0 +1,1 @@
+export type Story={id:string;slug:string;title:string;dek:string;lifeLesson:string;category:'ActsOfKindness'|'BraveryRescue'|'Innovation'|'Environment'|'GlobalHope'|'Wisdom';city?:string;state?:string;country:string;readMinutes:number;publishedAt:string;heroImage?:string;videoUrl?:string};

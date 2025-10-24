@@ -1,0 +1,1 @@
+export type RegionPref={country?:string;state?:string;city?:string};export function getRegionPref():RegionPref{if(typeof window==='undefined')return{};try{const raw=localStorage.getItem('regionPref');return raw?JSON.parse(raw):{};}catch{return{};}}export function setRegionPref(pref:RegionPref){try{localStorage.setItem('regionPref',JSON.stringify(pref));}catch{}}
