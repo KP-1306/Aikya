@@ -25,6 +25,7 @@ const STORY_COLUMNS =
   "id, slug, title, dek, life_lesson, category, city, state, country, read_minutes, published_at, hero_image, video_url, what, how, why, is_published";
 
 export async function getStories(opts: {
+  city?: string;
   state?: string;
   category?: string;
   limit?: number;
@@ -38,10 +39,12 @@ export async function getStories(opts: {
     .eq("is_published", true)
     .order("published_at", { ascending: false });
 
-  if (opts.state) q = q.eq("state", opts.state);
+  // Narrowest filter first
+  if (opts.city) q = q.eq("city", opts.city);
+  else if (opts.state) q = q.eq("state", opts.state);
+
   if (opts.category) q = q.eq("category", opts.category);
 
-  // Pagination (optional)
   const limit = opts.limit ?? 24;
   const page = Math.max(1, opts.page ?? 1);
   const from = (page - 1) * limit;
@@ -64,7 +67,6 @@ export async function getStoryBySlug(slug: string) {
 
   if (error) throw new Error(`getStoryBySlug failed: ${error.message}`);
 
-  // fetch sources separately (keeps schema simple)
   const { data: sources, error: srcErr } = await sb
     .from("sources")
     .select("name, url")
