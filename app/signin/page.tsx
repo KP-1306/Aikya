@@ -1,0 +1,1 @@
+export default () => (<div className='prose'><h1>Sign in</h1><p>Connect your account (Auth to be wired).</p></div>);
