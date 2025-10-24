@@ -15,6 +15,11 @@ export default async function AccountPage() {
     .maybeSingle();
 
   return (
+
+    <p className="text-sm">
+  See your <a href="/account/saved" className="underline">Saved stories</a>.
+</p>
+    
     <div className="container max-w-2xl py-10">
       <h1 className="text-2xl font-bold mb-2">Your account</h1>
       <p className="text-neutral-600 mb-6">Manage the details used to personalize local news.</p>
