@@ -1,0 +1,1 @@
+export default () => (<div className='prose'><h1>Privacy</h1><p>We process comments and submissions with AI for safety and curation.</p></div>);
