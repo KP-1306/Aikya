@@ -51,6 +51,20 @@ export async function POST(req: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
+    // 4) sources (optional): replace existing sources with provided set
+    const sources: { name: string; url: string }[] = Array.isArray(body.sources) ? body.sources : [];
+    if (sources.length) {
+      await supabaseService.from("sources").delete().eq("story_id", data.id);
+      const payload = sources.map((s) => ({
+        story_id: data.id,
+        name: s.name || new URL(s.url).hostname,
+        url: s.url,
+      }));
+      // Ignore insert error detail in response; surface succinct message
+      const { error: srcErr } = await supabaseService.from("sources").insert(payload);
+      if (srcErr) return NextResponse.json({ error: srcErr.message }, { status: 400 });
+    }
+
     return NextResponse.json({ ok: true, id: data.id, slug: data.slug });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
