@@ -1,0 +1,1 @@
+export default () => (<div className='prose'><h1>About</h1><p>Mission, how it works, and standards.</p></div>);
