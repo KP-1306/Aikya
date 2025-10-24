@@ -3,9 +3,25 @@ import type { Metadata } from "next";
 import { clsx } from "clsx";
 
 export const metadata: Metadata = {
-  title: "Positive News — Good Around You",
+  title: "Aikya — Good Around You",
   description: "Local-first, uplifting stories with life lessons.",
-  metadataBase: new URL("https://example.com"),
+  metadataBase: new URL("https://aikyanow.netlify.app"),
+  openGraph: {
+    title: "Aikya — Good Around You",
+    description: "Local-first, uplifting stories with life lessons.",
+    url: "https://aikyanow.netlify.app",
+    siteName: "Aikya",
+    images: [{ url: "/og.jpg", width: 1200, height: 630 }],
+    locale: "en_IN",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Aikya — Good Around You",
+    description: "Local-first, uplifting stories with life lessons.",
+    images: ["/og.jpg"],
+  },
+  icons: { icon: "/favicon.ico" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -15,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="border-b bg-white/70 backdrop-blur">
           <div className="container flex items-center justify-between h-16">
             <a href="/" className="flex items-center gap-2 font-semibold">
-              <span className="text-brand">☀️ Positive</span>News
+              <span className="text-brand">☀️ Aikya</span>News
             </a>
             <nav className="flex items-center gap-4 text-sm">
               <a href="/submit" className="hover:underline">Submit</a>
@@ -31,10 +47,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <footer className="border-t py-10 text-sm text-neutral-500">
           <div className="container flex justify-between">
-            <p>© {new Date().getFullYear()} Positive News</p>
+            <p>© {new Date().getFullYear()} Aikya</p>
             <p>
-              <a href="/privacy" className="hover:underline">Privacy</a>
-              {" · "}
+              <a href="/privacy" className="hover:underline">Privacy</a>{" · "}
               <a href="/terms" className="hover:underline">Terms</a>
             </p>
           </div>
