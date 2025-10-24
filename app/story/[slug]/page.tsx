@@ -17,6 +17,18 @@ export default async function StoryPage({ params }: { params: { slug: string } }
     ? await getReactions((s as any).id as string)
     : { likeCount: 0, liked: false, saved: false };
 
+  // helpers to handle mock vs DB field names
+  const published = new Date((s as any).publishedAt ?? (s as any).published_at);
+  const minutes = (s as any).readMinutes ?? (s as any).read_minutes ?? 3;
+
+  // slug helpers for city/state links (inline, no import needed)
+  const citySlug = s.city
+    ? encodeURIComponent(s.city.toLowerCase().replace(/\s+/g, "-"))
+    : null;
+  const stateSlug = s.state
+    ? encodeURIComponent(s.state.toLowerCase().replace(/\s+/g, "-"))
+    : null;
+
   return (
     <>
       <article className="prose max-w-2xl mx-auto prose-headings:scroll-mt-24">
@@ -32,10 +44,21 @@ export default async function StoryPage({ params }: { params: { slug: string } }
         <h1>{s.title}</h1>
         <p className="text-lg text-neutral-700">{s.dek}</p>
 
-        {/* Meta */}
+        {/* Meta (linked city/state) */}
         <div className="not-prose text-sm text-neutral-500">
-          Curated by Aikya • {s.city ?? s.state ?? s.country} •{" "}
-          {new Date(s.publishedAt).toDateString()} • {s.readMinutes} min read
+          Curated by Aikya •{" "}
+          {s.city ? (
+            <Link className="underline" href={`/city/${citySlug}`}>
+              {s.city}
+            </Link>
+          ) : s.state ? (
+            <Link className="underline" href={`/state/${stateSlug}`}>
+              {s.state}
+            </Link>
+          ) : (
+            s.country
+          )}{" "}
+          • {published.toDateString()} • {minutes} min read
         </div>
 
         {/* Reactions (Like / Save) */}
