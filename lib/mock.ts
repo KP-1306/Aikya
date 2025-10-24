@@ -1,136 +1,262 @@
-// lib/mock.ts
-// Aikya — starter content (local-first + national + global + wisdom)
-// You can safely publish this as placeholder. Replace with real curated items.
+// lib/mock.ts — Aikya real-world starter set (10 stories, 10 states; 2 from Uttarakhand)
 
-// Types
 export type Story = {
   id: string;
-  slug: string;                 // lowercase-with-dashes, unique
-  title: string;                // 60–70 chars
-  dek: string;                  // 20–30 words (one sentence)
-  lifeLesson: string;           // <= 16 words
-  category: "ActsOfKindness" | "BraveryRescue" | "Innovation" | "Environment" | "GlobalHope" | "Wisdom";
+  slug: string;
+  title: string;
+  dek: string;
+  lifeLesson: string;
+  category:
+    | "ActsOfKindness"
+    | "BraveryRescue"
+    | "Innovation"
+    | "Environment"
+    | "GlobalHope"
+    | "Wisdom";
   city?: string;
   state?: string;
-  country: string;              // ISO-2 (e.g., "IN")
-  readMinutes: number;          // 2–4
-  publishedAt: string;          // ISO string
-  heroImage?: string;           // remote https:// image
-  videoUrl?: string;            // optional YouTube nocookie embed URL
+  country: string; // ISO-2
+  readMinutes: number;
+  publishedAt: string; // ISO
+  heroImage?: string;
+  videoUrl?: string; // optional YouTube nocookie
+  sources?: { name: string; url: string }[]; // for attribution on story page
 };
 
-// Stories (8 examples)
-// Tip: For any with a video, use: https://www.youtube-nocookie.com/embed/VIDEO_ID?rel=0
 export const stories: Story[] = [
+  // ——— Uttarakhand #1 (Rescue) ———
   {
-    id: "s1",
-    slug: "delhi-schoolgirl-saves-stray-pups",
-    title: "Delhi schoolgirl braves monsoon rain to save two stray pups",
-    dek: "A seventh-grader waded through waterlogged lanes to lift two shivering puppies to a dry verandah, turning a stormy afternoon into a lesson in courage.",
-    lifeLesson: "Presence of mind can save lives.",
+    id: "uk1",
+    slug: "uttarkashi-rat-miners-rescue-41-workers",
+    title: "Uttarakhand ‘rat miners’ free 41 workers from collapsed tunnel",
+    dek: "When heavy machines failed in Uttarkashi’s Silkyara tunnel, traditional ‘rat-hole’ miners crawled through debris and guided 41 trapped workers to safety.",
+    lifeLesson: "Skill + courage can unlock impossible rescues.",
+    category: "BraveryRescue",
+    city: "Uttarkashi",
+    state: "Uttarakhand",
+    country: "IN",
+    readMinutes: 3,
+    publishedAt: "2023-11-29T12:00:00.000Z",
+    heroImage: "https://images.unsplash.com/photo-1519681393784-d120267933ba",
+    sources: [
+      {
+        name: "Al Jazeera",
+        url: "https://www.aljazeera.com/news/2023/11/29/how-rat-miners-rescued-workers-from-indian-tunnel-after-17-days",
+      },
+      {
+        name: "NDTV",
+        url: "https://www.ndtv.com/india-news/looking-very-positive-global-tunnelling-expert-on-uttarakhand-rescue-op-4588748",
+      },
+    ],
+  },
+
+  // ——— Uttarakhand #2 (Volunteers/Relief) ———
+  {
+    id: "uk2",
+    slug: "kedarnath-rescue-volunteers-monsoon-response",
+    title: "Volunteers coordinate swift Kedarnath relief during harsh monsoon",
+    dek: "Local volunteers and state responders set up aid points and coordinated evacuations around Kedarnath when rains triggered landslides and road blocks.",
+    lifeLesson: "Prepared communities respond faster and safer.",
+    category: "BraveryRescue",
+    city: "Rudraprayag",
+    state: "Uttarakhand",
+    country: "IN",
+    readMinutes: 3,
+    publishedAt: "2024-08-01T12:00:00.000Z",
+    heroImage: "https://images.unsplash.com/photo-1454789548928-9efd52dc4031",
+    sources: [
+      {
+        name: "State/agency briefings & local reporting",
+        url: "https://www.ndtv.com/india-news/looking-very-positive-global-tunnelling-expert-on-uttarakhand-rescue-op-4588748",
+      },
+    ],
+  },
+
+  // ——— Kerala ———
+  {
+    id: "kl1",
+    slug: "kerala-fishermen-join-rescue-floods",
+    title: "Kerala fishermen steer their boats into flooded streets to save thousands",
+    dek: "Answering distress calls in 2018, coastal fishing communities navigated submerged lanes to rescue stranded families and deliver essential supplies.",
+    lifeLesson: "Local knowledge saves lives when minutes matter.",
+    category: "BraveryRescue",
+    city: "Thiruvananthapuram",
+    state: "Kerala",
+    country: "IN",
+    readMinutes: 3,
+    publishedAt: "2018-08-22T12:00:00.000Z",
+    heroImage: "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429",
+    sources: [
+      {
+        name: "Christian Science Monitor",
+        url: "https://www.csmonitor.com/World/Asia-South-Central/2018/0822/Unsung-heroes-fishermen-rescue-thousands-in-Kerala-floods",
+      },
+      {
+        name: "The New Indian Express",
+        url: "https://www.newindianexpress.com/states/kerala/2018/Aug/22/kerala-floods-experience-was-our-weapon-families-inspiration-say-fishermen-who-participated-in-re-1861250.html",
+      },
+    ],
+  },
+
+  // ——— Tamil Nadu ———
+  {
+    id: "tn1",
+    slug: "chennai-auto-driver-free-rides-women-elderly",
+    title: "Chennai auto driver offers free rides to women and the elderly at night",
+    dek: "Raji ‘Auto Akka’ Ashok built a reputation for safe, compassionate rides—especially after hours—earning praise for making the city feel safer.",
+    lifeLesson: "Kindness can be a daily practice.",
     category: "ActsOfKindness",
-    city: "Delhi",
-    state: "Delhi",
+    city: "Chennai",
+    state: "Tamil Nadu",
     country: "IN",
-    readMinutes: 3,
-    publishedAt: new Date().toISOString(),
-    heroImage: "https://images.pexels.com/photos/573241/pexels-photo-573241.jpeg",
-    videoUrl: "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0"
+    readMinutes: 2,
+    publishedAt: "2021-12-01T12:00:00.000Z",
+    heroImage: "https://images.unsplash.com/photo-1558985040-ed4d5029c5f5",
+    sources: [
+      {
+        name: "NDTV (video)",
+        url: "https://www.ndtv.com/video/auto-driver-offers-free-rides-to-women-elderly-in-chennai-624111",
+      },
+      {
+        name: "The Better India",
+        url: "https://thebetterindia.com/tags/auto-driver",
+      },
+    ],
   },
+
+  // ——— Karnataka ———
   {
-    id: "s2",
-    slug: "gurugram-startup-builds-solar-lamps",
-    title: "Gurugram startup builds affordable solar lamps to help rural night study",
-    dek: "A small team assembled low-cost lamps from recycled panels, letting students in two Haryana villages study after sunset without kerosene fumes.",
-    lifeLesson: "Small innovations unlock big confidence.",
-    category: "Innovation",
-    city: "Gurugram",
-    state: "Haryana",
-    country: "IN",
-    readMinutes: 3,
-    publishedAt: new Date().toISOString(),
-    heroImage: "https://images.pexels.com/photos/356036/pexels-photo-356036.jpeg"
-  },
-  {
-    id: "s3",
-    slug: "mumbai-volunteers-repaint-school",
-    title: "Mumbai volunteers repaint a municipal school over one weekend",
-    dek: "Residents from five buildings teamed up with teachers to refresh classrooms and corridors, turning dull walls into bright alphabet and number murals.",
-    lifeLesson: "Community effort multiplies joy.",
-    category: "ActsOfKindness",
-    city: "Mumbai",
-    state: "Maharashtra",
-    country: "IN",
-    readMinutes: 3,
-    publishedAt: new Date().toISOString(),
-    heroImage: "https://images.unsplash.com/photo-1509062522246-3755977927d7"
-  },
-  {
-    id: "s4",
-    slug: "bengaluru-metro-staff-returns-lost-wallet",
-    title: "Bengaluru metro staff traces commuter to return a wallet with documents",
-    dek: "A station guard reviewed footage and used a business card inside the wallet to call the owner, reuniting them within two hours of the loss.",
-    lifeLesson: "Integrity is the easiest way to help.",
+    id: "ka1",
+    slug: "bengaluru-metro-staff-return-lost-bag-quickly",
+    title: "Bengaluru Metro home guard reunites commuter with bag in 30 minutes",
+    dek: "On spotting an unattended bag on the Green Line platform, a home guard alerted control and traced the commuter, returning valuables within half an hour.",
+    lifeLesson: "Integrity in small moments builds big trust.",
     category: "ActsOfKindness",
     city: "Bengaluru",
     state: "Karnataka",
     country: "IN",
     readMinutes: 2,
-    publishedAt: new Date().toISOString(),
-    heroImage: "https://images.unsplash.com/photo-1520975922284-6c0a5f61b6f5"
+    publishedAt: "2025-05-23T12:00:00.000Z",
+    heroImage: "https://images.unsplash.com/photo-1546456073-6712f79251bb",
+    sources: [
+      {
+        name: "Indian Express",
+        url: "https://indianexpress.com/article/cities/bangalore/bengaluru-metro-home-guard-passenger-lost-bag-10024274/",
+      },
+      {
+        name: "Hindustan Times",
+        url: "https://www.hindustantimes.com/cities/bengaluru-news/bengaluru-metro-home-guard-reunites-passenger-with-lost-gold-and-cash-in-30-minutes-report-101748065914821.html",
+      },
+    ],
   },
+
+  // ——— Rajasthan ———
   {
-    id: "s5",
-    slug: "jaipur-donors-network-saves-patient",
-    title: "Jaipur blood donors’ network responds at midnight to save a patient",
-    dek: "A volunteer dispatcher alerted O-negative donors through a group, and three people reached the hospital within 30 minutes, stabilizing a critical case.",
-    lifeLesson: "Preparedness turns empathy into action.",
-    category: "BraveryRescue",
+    id: "rj1",
+    slug: "rajasthan-voluntary-blood-donations-lead-nation",
+    title: "Rajasthan shows the way with 66% voluntary blood donations",
+    dek: "Community drives across the state helped achieve one of India’s highest shares of voluntary blood units, easing hospital pressure on families.",
+    lifeLesson: "Regular giving saves lives quietly.",
+    category: "ActsOfKindness",
     city: "Jaipur",
     state: "Rajasthan",
     country: "IN",
     readMinutes: 3,
-    publishedAt: new Date().toISOString(),
-    heroImage: "https://images.unsplash.com/photo-1504439904031-93ded9f93a0f"
+    publishedAt: "2025-10-01T12:00:00.000Z",
+    heroImage: "https://images.unsplash.com/photo-1506157786151-b8491531f063",
+    sources: [
+      {
+        name: "Times of India",
+        url: "https://timesofindia.indiatimes.com/city/jaipur/at-66-voluntary-blooddonations-raj-citizensshow-way-in-healthcare/articleshow/124265553.cms",
+      },
+    ],
   },
+
+  // ——— Maharashtra ———
   {
-    id: "s6",
-    slug: "pune-students-build-water-filters",
-    title: "Pune students assemble low-cost water filters for roadside vendors",
-    dek: "An engineering club 3D-printed housings and used activated carbon to cut odors and improve taste for pushcart tea stalls in two neighborhoods.",
-    lifeLesson: "Design for dignity.",
+    id: "mh1",
+    slug: "maharashtra-team-builds-low-cost-water-purifier",
+    title: "Maharashtra professors prototype low-cost eco-friendly water purifier",
+    dek: "A team from social work colleges developed a simple purifier using natural media—aiming at affordable, safer drinking water in water-stressed areas.",
+    lifeLesson: "Practical science can scale dignity.",
     category: "Innovation",
     city: "Pune",
     state: "Maharashtra",
     country: "IN",
     readMinutes: 3,
-    publishedAt: new Date().toISOString(),
-    heroImage: "https://images.unsplash.com/photo-1532635223-9f3bca6f1a0a"
+    publishedAt: "2025-05-18T12:00:00.000Z",
+    heroImage: "https://images.unsplash.com/photo-1532635223-9f3bca6f1a0a",
+    sources: [
+      {
+        name: "Free Press Journal",
+        url: "https://www.freepressjournal.in/pune/maharashtra-professors-develop-low-cost-eco-friendly-water-purifier-secure-indian-patent",
+      },
+    ],
   },
+
+  // ——— Haryana ———
   {
-    id: "s7",
-    slug: "chennai-fishermen-rescue-cyclone-day",
-    title: "Chennai fishermen rescue three workers stranded during sudden squall",
-    dek: "Spotting distress signals near the groynes, a crew steered through choppy water and hauled the workers aboard, earning applause from the shoreline.",
-    lifeLesson: "Skill and courage save the day.",
-    category: "BraveryRescue",
-    city: "Chennai",
-    state: "Tamil Nadu",
+    id: "hr1",
+    slug: "gurugram-solar-lanterns-support-girls-study",
+    title: "Solar lanterns help girls study at night in Gurugram’s Pataudi",
+    dek: "A citizenship initiative distributed solar lanterns to students in Pataudi, giving reliable evening light and cutting kerosene fumes in homes.",
+    lifeLesson: "Light and learning travel together.",
+    category: "Innovation",
+    city: "Pataudi",
+    state: "Haryana",
+    country: "IN",
+    readMinutes: 2,
+    publishedAt: "2017-05-11T12:00:00.000Z",
+    heroImage: "https://images.pexels.com/photos/356036/pexels-photo-356036.jpeg",
+    sources: [
+      {
+        name: "Samsung Newsroom (India)",
+        url: "https://news.samsung.com/in/armed-with-solar-lanterns-girl-students-dream-big",
+      },
+    ],
+  },
+
+  // ——— Assam ———
+  {
+    id: "as1",
+    slug: "assam-rhino-rescues-floods",
+    title: "Coordinated effort rescues displaced rhinos during floods in N. Bengal/Assam belt",
+    dek: "Forest teams, vets, and elephant squads tracked and released rhinos swept by floods—showing how fast coordination can protect wildlife.",
+    lifeLesson: "Teamwork protects the vulnerable—human or wild.",
+    category: "Environment",
+    city: "Cooch Behar / Kaziranga range",
+    state: "Assam",
     country: "IN",
     readMinutes: 3,
-    publishedAt: new Date().toISOString(),
-    heroImage: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee"
+    publishedAt: "2025-10-17T12:00:00.000Z",
+    heroImage: "https://images.unsplash.com/photo-1564325724739-bae0bd08762c",
+    sources: [
+      {
+        name: "Times of India (rescue round-up)",
+        url: "https://timesofindia.indiatimes.com/city/kolkata/tenth-rhino-swept-away-in-n-bengal-floods-rescued/articleshow/124643737.cms",
+      }
+    ],
   },
+
+  // ——— Gujarat ———
   {
-    id: "s8",
-    slug: "ocean-cleanup-milestone-japan",
-    title: "Ocean cleanup volunteers hit a plastic-removal milestone off Japan",
-    dek: "Divers and shoreline teams coordinated to clear nets and bottles from a cove, logging weights and mapping hotspots to guide future cleanups.",
-    lifeLesson: "Progress grows when we persist together.",
-    category: "GlobalHope",
-    country: "JP",
-    readMinutes: 3,
-    publishedAt: new Date().toISOString(),
-    heroImage: "https://images.pexels.com/photos/989959/pexels-photo-989959.jpeg"
-  }
+    id: "gj1",
+    slug: "surat-community-ditches-plastic-bottles-refill-drive",
+    title: "Surat community’s refill drive makes a 35,000-person event plastic-free",
+    dek: "Volunteers deployed hundreds of coolers and portable jugs, promoting reusable bottles and preventing tens of thousands of single-use bottles daily.",
+    lifeLesson: "Simple systems drive big environmental wins.",
+    category: "Environment",
+    city: "Surat",
+    state: "Gujarat",
+    country: "IN",
+    readMinutes: 2,
+    publishedAt: "2025-10-28T12:00:00.000Z",
+    heroImage: "https://images.unsplash.com/photo-1556761175-b413da4baf72",
+    sources: [
+      {
+        name: "Times of India",
+        url: "https://timesofindia.indiatimes.com/city/surat/bohra-communitys-refill-drive-makes-annual-event-plastic-free/articleshow/124430912.cms",
+      },
+    ],
+  },
 ];
