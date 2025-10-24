@@ -3,6 +3,7 @@ import { stories } from "@/lib/mock";
 import Image from "next/image";
 import Link from "next/link";
 import RelatedCarousel from "@/components/RelatedCarousel";
+import Comments from "@/components/Comments";
 
 export default function StoryPage({ params }: { params: { slug: string } }) {
   const s = stories.find((x) => x.slug === params.slug);
@@ -58,7 +59,7 @@ export default function StoryPage({ params }: { params: { slug: string } }) {
           <div className="not-prose text-sm text-neutral-600 space-y-1">
             <div className="font-medium">Inspired by:</div>
             <ul className="sources-list">
-              {s.sources.map((src) => (
+              {s.sources.map((src: { url: string; name: string }) => (
                 <li key={src.url}>
                   <a className="underline" href={src.url} rel="nofollow noopener" target="_blank">
                     {src.name}
@@ -69,6 +70,17 @@ export default function StoryPage({ params }: { params: { slug: string } }) {
           </div>
         ) : null}
       </article>
+
+      {/* Comments (renders only when story has a real DB id) */}
+      <div className="container max-w-2xl">
+        {s.id ? (
+          <Comments storyId={s.id as string} />
+        ) : (
+          <div className="mt-8 text-sm text-neutral-500">
+            Comments will appear here once this story is published from the database.
+          </div>
+        )}
+      </div>
 
       {/* Related slider */}
       <div className="container">
