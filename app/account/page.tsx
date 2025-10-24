@@ -10,7 +10,7 @@ export default async function AccountPage() {
 
   const { data: profile } = await sb
     .from("profiles")
-    .select("full_name, state, created_at")
+    .select("full_name, state, city, avatar_url, created_at")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -36,6 +36,8 @@ export default async function AccountPage() {
         <UpdateProfileForm
           initialFullName={profile?.full_name ?? ""}
           initialStateValue={profile?.state ?? ""}
+          initialCity={profile?.city ?? ""}
+          initialAvatarUrl={profile?.avatar_url ?? null}
         />
       </div>
     </div>
