@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ImageUploader from "./ImageUploader";
+
+type Source = { name: string; url: string };
 
 type StoryDraft = {
   id?: string;
@@ -20,6 +22,8 @@ type StoryDraft = {
   hero_alt?: string | null;
   hero_credit?: string | null;
   is_published?: boolean;
+  // NEW: carry sources from the ingest step so the save route can persist them
+  sources?: Source[];
 };
 
 export default function AdminStoryForm({
@@ -41,8 +45,27 @@ export default function AdminStoryForm({
     hero_alt: "",
     hero_credit: "",
     is_published: false,
+    sources: [],
     ...initial,
   });
+
+  // Prefill from the ingest step (sessionStorage) when creating a fresh story.
+  useEffect(() => {
+    try {
+      const isEditing = !!initial && Object.keys(initial).length > 0;
+      if (!isEditing) {
+        const s = sessionStorage.getItem("ingestDraft");
+        if (s) {
+          const draft = JSON.parse(s);
+          setData(d => ({ ...d, ...draft }));
+          // Optional: clear after consuming
+          // sessionStorage.removeItem("ingestDraft");
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [initial]);
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -59,7 +82,8 @@ export default function AdminStoryForm({
       const res = await fetch("/api/admin/stories/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, is_published: publish }),
+        // include any sources in the payload
+        body: JSON.stringify({ ...data, is_published: publish, sources: data.sources ?? [] }),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Failed");
@@ -122,9 +146,15 @@ export default function AdminStoryForm({
         </div>
         <div>
           <label className="block text-sm font-medium">Read minutes</label>
-          <input type="number" min={1} className="mt-1 w-full rounded border px-3 py-2"
+          <input
+            type="number"
+            min={1}
+            className="mt-1 w-full rounded border px-3 py-2"
             value={data.read_minutes ?? 3}
-            onChange={(e) => setData(d => ({ ...d, read_minutes: Number(e.target.value) || 3 }))}/>
+            onChange={(e) =>
+              setData(d => ({ ...d, read_minutes: Number(e.target.value) || 3 }))
+            }
+          />
         </div>
       </div>
 
@@ -166,6 +196,22 @@ export default function AdminStoryForm({
         <input className="mt-1 w-full rounded border px-3 py-2"
           value={data.life_lesson} onChange={onText("life_lesson")} />
       </div>
+
+      {/* Optional tiny sources preview (if coming from ingest) */}
+      {data.sources?.length ? (
+        <div className="rounded-lg border p-3 bg-neutral-50">
+          <div className="text-sm font-medium mb-1">Sources to save</div>
+          <ul className="text-sm list-disc pl-5">
+            {data.sources.map((s, i) => (
+              <li key={i}>
+                <a className="underline" href={s.url} target="_blank" rel="noreferrer">
+                  {s.name || s.url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="flex gap-3">
         <button type="button" className="btn border px-4 py-2" disabled={busy}
