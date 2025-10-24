@@ -4,26 +4,51 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
+// Optional: prevent this page from being indexed
+export const metadata = {
+  robots: { index: false, follow: false },
+};
+
 export default function AuthCallbackPage() {
   const [msg, setMsg] = useState("Signing you in…");
 
   useEffect(() => {
+    let canceled = false;
+
     async function run() {
       try {
-        const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+        // 1) Exchange the OAuth/magic-link code for a session
+        const { error } = await supabase.auth.exchangeCodeForSession(
+          window.location.href
+        );
         if (error) throw error;
 
-        // Create profile on first login (Google/magic link)
-        const { data: { user } } = await supabase.auth.getUser();
+        // 2) Ensure a profile row exists for this user
+        const { data: { user }, error: getUserErr } = await supabase.auth.getUser();
+        if (getUserErr) throw getUserErr;
+
         if (user) {
-          await supabase.from("profiles").upsert({ id: user.id }, { onConflict: "id" });
+          // Upsert creates if missing; safe to call on every login
+          // If your table has more columns, include them here
+          await supabase.from("profiles").upsert(
+            { id: user.id },
+            { onConflict: "id" }
+          );
         }
-        window.location.replace("/");
+
+        // 3) Bounce to home (or wherever you want)
+        if (!canceled) window.location.replace("/");
       } catch (e: any) {
-        setMsg(e?.message || "Something went wrong. You can close this window.");
+        if (!canceled) {
+          setMsg(e?.message || "Something went wrong. You can close this window.");
+        }
       }
     }
+
     run();
+    return () => {
+      canceled = true;
+    };
   }, []);
 
   return (
