@@ -4,10 +4,18 @@ import Image from "next/image";
 import Link from "next/link";
 import RelatedCarousel from "@/components/RelatedCarousel";
 import Comments from "@/components/Comments";
+import { getReactions } from "@/lib/reactions";
+import LikeButton from "@/components/LikeButton";
+import SaveButton from "@/components/SaveButton";
 
-export default function StoryPage({ params }: { params: { slug: string } }) {
+export default async function StoryPage({ params }: { params: { slug: string } }) {
   const s = stories.find((x) => x.slug === params.slug);
   if (!s) return <div className="py-10 container">Story not found.</div>;
+
+  // Reactions: only fetch from DB when the story has a real DB id
+  const reactions = (s as any).id
+    ? await getReactions((s as any).id as string)
+    : { likeCount: 0, liked: false, saved: false };
 
   return (
     <>
@@ -28,6 +36,27 @@ export default function StoryPage({ params }: { params: { slug: string } }) {
         <div className="not-prose text-sm text-neutral-500">
           Curated by Aikya • {s.city ?? s.state ?? s.country} •{" "}
           {new Date(s.publishedAt).toDateString()} • {s.readMinutes} min read
+        </div>
+
+        {/* Reactions (Like / Save) */}
+        <div className="not-prose mt-4 flex items-center gap-3">
+          {(s as any).id ? (
+            <>
+              <LikeButton
+                storyId={(s as any).id as string}
+                initialCount={reactions.likeCount}
+                initialLiked={reactions.liked}
+              />
+              <SaveButton
+                storyId={(s as any).id as string}
+                initialSaved={reactions.saved}
+              />
+            </>
+          ) : (
+            <div className="text-xs text-neutral-500">
+              Reactions appear for published stories.
+            </div>
+          )}
         </div>
 
         {/* Hero image */}
@@ -73,8 +102,8 @@ export default function StoryPage({ params }: { params: { slug: string } }) {
 
       {/* Comments (renders only when story has a real DB id) */}
       <div className="container max-w-2xl">
-        {s.id ? (
-          <Comments storyId={s.id as string} />
+        {(s as any).id ? (
+          <Comments storyId={(s as any).id as string} />
         ) : (
           <div className="mt-8 text-sm text-neutral-500">
             Comments will appear here once this story is published from the database.
