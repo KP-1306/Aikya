@@ -31,14 +31,13 @@ export default async function AdminStoriesPage() {
     .maybeSingle();
   if (!admin) redirect("/");
 
-  // Admins can see drafts + published thanks to your RLS admin policy
+  // Thanks to your admin RLS policy, this returns drafts + published
   const { data, error } = await sb
     .from("stories")
     .select("id, slug, title, state, city, is_published, published_at, created_at")
     .order("created_at", { ascending: false });
 
   if (error) {
-    // Minimal handling; you can render a nicer error UI if you prefer
     console.error("Admin list fetch error:", error.message);
   }
 
@@ -50,12 +49,18 @@ export default async function AdminStoriesPage() {
         <div>
           <h1 className="text-2xl font-bold">Admin · Stories</h1>
           <p className="text-sm text-neutral-600">
-            Create, publish, edit, or delete stories. Only admins can see this page.
+            Create, ingest, publish, edit, or delete stories. Only admins can see this page.
           </p>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/" className="text-sm underline hover:no-underline">
             ← Back to site
+          </Link>
+          <Link
+            href="/admin/ingest"
+            className="rounded-lg border px-3 py-1.5 text-sm hover:bg-neutral-50"
+          >
+            Ingest URL
           </Link>
           <Link
             href="/admin/stories/new"
@@ -81,7 +86,7 @@ export default async function AdminStoriesPage() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-neutral-500">
-                  No stories yet. Click <em>+ New</em> to create your first one.
+                  No stories yet. Click <em>+ New</em> or <em>Ingest URL</em> to create your first one.
                 </td>
               </tr>
             )}
