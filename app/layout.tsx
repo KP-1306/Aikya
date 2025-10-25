@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { clsx } from "clsx";
 import Link from "next/link";
 import NavUser from "@/components/NavUser";
+import PageviewPing from "@/components/PageviewPing";
 
 export const metadata: Metadata = {
   title: "Aikya — Good Around You",
@@ -47,6 +48,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
         </header>
+
+        <body className={clsx("min-h-screen bg-neutral-50")}>
+  {/* header */}
+  <PageviewPing />
+  <main className="container py-6">{children}</main>
+  {/* footer */}
+</body>
 
         <main className="container py-6">{children}</main>
 
