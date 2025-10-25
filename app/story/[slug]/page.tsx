@@ -1,14 +1,19 @@
 // app/story/[slug]/page.tsx
-import { stories } from "@/lib/mock";
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+
+import { stories } from "@/lib/mock";
 import RelatedCarousel from "@/components/RelatedCarousel";
 import Comments from "@/components/Comments";
 import { getReactions } from "@/lib/reactions";
 import LikeButton from "@/components/LikeButton";
 import SaveButton from "@/components/SaveButton";
-import type { Metadata } from "next";
 import { getStoryBySlug } from "@/lib/data";
+
+// Proof-of-Good panel is a client component; load only on the client
+const ProofPanel = dynamic(() => import("@/components/ProofPanel"), { ssr: false });
 
 export async function generateMetadata(
   { params }: { params: { slug: string } }
@@ -18,19 +23,24 @@ export async function generateMetadata(
     const title = s?.title ? `${s.title} — Aikya` : "Aikya — Good Around You";
     const description = s?.dek || "Local-first, uplifting stories with life lessons.";
     const url = `https://aikyanow.netlify.app/story/${params.slug}`;
-    const image = s?.hero_image || "/og.jpg";
+    const image = s?.hero_image || s?.heroImage || "/og.jpg";
 
     return {
       title,
       description,
       alternates: { canonical: url },
       openGraph: {
-        title, description, url, type: "article",
+        title,
+        description,
+        url,
+        type: "article",
         images: [{ url: image }],
       },
       twitter: {
         card: "summary_large_image",
-        title, description, images: [image],
+        title,
+        description,
+        images: [image],
       },
     };
   } catch {
@@ -42,25 +52,24 @@ export async function generateMetadata(
 }
 
 export default async function StoryPage({ params }: { params: { slug: string } }) {
+  // For now we still read from mock; later you can switch to DB loader here too.
   const s = stories.find((x) => x.slug === params.slug);
   if (!s) return <div className="py-10 container">Story not found.</div>;
 
   // Reactions: only fetch from DB when the story has a real DB id
-  const reactions = (s as any).id
-    ? await getReactions((s as any).id as string)
-    : { likeCount: 0, liked: false, saved: false };
+  const reactions =
+    (s as any).id
+      ? await getReactions((s as any).id as string)
+      : { likeCount: 0, liked: false, saved: false };
 
-  // helpers to handle mock vs DB field names
-  const published = new Date((s as any).publishedAt ?? (s as any).published_at);
+  // Normalize fields (mock vs DB)
+  const published = new Date((s as any).publishedAt ?? (s as any).published_at ?? Date.now());
   const minutes = (s as any).readMinutes ?? (s as any).read_minutes ?? 3;
+  const hero = (s as any).heroImage ?? (s as any).hero_image ?? null;
 
-  // slug helpers for city/state links (inline, no import needed)
-  const citySlug = s.city
-    ? encodeURIComponent(s.city.toLowerCase().replace(/\s+/g, "-"))
-    : null;
-  const stateSlug = s.state
-    ? encodeURIComponent(s.state.toLowerCase().replace(/\s+/g, "-"))
-    : null;
+  // Slugs for linked city/state pages
+  const citySlug = s.city ? encodeURIComponent(s.city.toLowerCase().replace(/\s+/g, "-")) : null;
+  const stateSlug = s.state ? encodeURIComponent(s.state.toLowerCase().replace(/\s+/g, "-")) : null;
 
   return (
     <>
@@ -81,13 +90,9 @@ export default async function StoryPage({ params }: { params: { slug: string } }
         <div className="not-prose text-sm text-neutral-500">
           Curated by Aikya •{" "}
           {s.city ? (
-            <Link className="underline" href={`/city/${citySlug}`}>
-              {s.city}
-            </Link>
+            <Link className="underline" href={`/city/${citySlug}`}>{s.city}</Link>
           ) : s.state ? (
-            <Link className="underline" href={`/state/${stateSlug}`}>
-              {s.state}
-            </Link>
+            <Link className="underline" href={`/state/${stateSlug}`}>{s.state}</Link>
           ) : (
             s.country
           )}{" "}
@@ -109,17 +114,15 @@ export default async function StoryPage({ params }: { params: { slug: string } }
               />
             </>
           ) : (
-            <div className="text-xs text-neutral-500">
-              Reactions appear for published stories.
-            </div>
+            <div className="text-xs text-neutral-500">Reactions appear for published stories.</div>
           )}
         </div>
 
         {/* Hero image */}
-        {s.heroImage && (
+        {hero && (
           <figure className="not-prose my-4">
             <div className="relative w-full aspect-[16/9] overflow-hidden rounded-2xl ring-1 ring-black/5">
-              <Image src={s.heroImage} alt={s.title} fill className="object-cover" />
+              <Image src={hero} alt={s.title} fill className="object-cover" />
             </div>
             <figcaption className="mt-1">Image credit: CC0/Stock</figcaption>
           </figure>
@@ -155,6 +158,13 @@ export default async function StoryPage({ params }: { params: { slug: string } }
           </div>
         ) : null}
       </article>
+
+      {/* Proof-of-Good panel (client-only) */}
+      {(s as any).id && (
+        <div className="container max-w-2xl mt-8">
+          <ProofPanel storyId={(s as any).id as string} />
+        </div>
+      )}
 
       {/* Comments (renders only when story has a real DB id) */}
       <div className="container max-w-2xl">
