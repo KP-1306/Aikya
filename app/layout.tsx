@@ -41,6 +41,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/" className="flex items-center gap-2 font-semibold">
               <span className="text-brand">☀️ Aikya</span>News
             </Link>
+            
+<Link href="/coach" className="hover:underline">Coach</Link>
 
             {/* right side nav */}
             <nav className="flex items-center gap-4 text-sm">
