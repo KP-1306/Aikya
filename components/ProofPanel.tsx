@@ -107,5 +107,5 @@ export default function ProofPanel({ storyId }: { storyId: string }) {
         </p>
       </div>
     </div>
-  );
-}
+  ); }
+
