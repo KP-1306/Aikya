@@ -1,20 +1,27 @@
+// app/api/likes/toggle/route.ts
 import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
+import { rateLimit } from "@/lib/rateLimit";
 import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
 
 export async function POST(req: Request) {
   try {
     const { storyId } = (await req.json()) as { storyId?: string };
-    if (!storyId) return NextResponse.json({ error: "Missing storyId" }, { status: 400 });
+    if (!storyId) {
+      return NextResponse.json({ error: "Missing storyId" }, { status: 400 });
+    }
+
+    // 🔒 Rate limit: 60 like toggles per minute per anon id
+    const aid = cookies().get("aid")?.value || "anon";
+    const ok = await rateLimit(`${aid}:likes_toggle`, 60, 60_000);
+    if (!ok) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
 
     // Auth
-    const sb = supabaseServer();
-    const { data: { user } } = await sb.auth.getUser();
+    const { data: { user } } = await supabaseServer().auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Toggle like
-    // NOTE: if your table isn't "likes", change the table name below.
+    // Toggle like: if exists → delete; else → insert
     const { data: existing, error: getErr } = await supabaseService
       .from("likes")
       .select("id")
@@ -24,6 +31,7 @@ export async function POST(req: Request) {
     if (getErr) return NextResponse.json({ error: getErr.message }, { status: 400 });
 
     let liked: boolean;
+
     if (existing) {
       const { error } = await supabaseService
         .from("likes")
@@ -32,14 +40,17 @@ export async function POST(req: Request) {
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       liked = false;
     } else {
+      // insert; ignore duplicate key races
       const { error } = await supabaseService
         .from("likes")
         .insert({ story_id: storyId, user_id: user.id });
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      if (error && !/duplicate key/i.test(error.message)) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
       liked = true;
     }
 
-    // Recount
+    // Recount likes for this story
     const { count, error: cntErr } = await supabaseService
       .from("likes")
       .select("*", { count: "exact", head: true })
@@ -47,21 +58,20 @@ export async function POST(req: Request) {
     if (cntErr) return NextResponse.json({ error: cntErr.message }, { status: 400 });
     const likeCount = count || 0;
 
-    // 🔹 Analytics (server-side)
+    // 🔹 Analytics (best-effort, non-blocking)
     try {
-      const anon = cookies().get("aid")?.value;
       const ref = headers().get("referer") || headers().get("referrer") || "";
       const ua = headers().get("user-agent") || "";
       await supabaseService.from("analytics_events").insert({
+        aid,                         // if your column is anon_id, change to { anon_id: aid, ... }
         kind: "like",
         story_id: storyId,
         user_id: user.id,
-        anon_id: anon ?? crypto.randomUUID(),
         referrer: ref.slice(0, 512),
         ua: ua.slice(0, 512),
       });
     } catch {
-      // best-effort only
+      // ignore analytics failures
     }
 
     return NextResponse.json({ liked, likeCount });
