@@ -4,6 +4,7 @@ import { cookies, headers } from "next/headers";
 import { rateLimit } from "@/lib/rateLimit";
 import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
+import { awardKarma } from "@/lib/karma";
 
 export async function POST(req: Request) {
   try {
@@ -21,6 +22,8 @@ export async function POST(req: Request) {
     const { data: { user } } = await supabaseServer().auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    await awardKarma(user.id, "like", { storyId });
+    
     // Toggle like: if exists → delete; else → insert
     const { data: existing, error: getErr } = await supabaseService
       .from("likes")
