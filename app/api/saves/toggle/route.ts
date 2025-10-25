@@ -4,6 +4,7 @@ import { cookies, headers } from "next/headers";
 import { rateLimit } from "@/lib/rateLimit";
 import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
+import { awardKarma } from "@/lib/karma";
 
 export async function POST(req: Request) {
   try {
@@ -16,6 +17,8 @@ export async function POST(req: Request) {
     const aid = cookies().get("aid")?.value || "anon";
     const ok = await rateLimit(`${aid}:saves_toggle`, 60, 60_000);
     if (!ok) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+
+    await awardKarma(user.id, "save", { storyId });
 
     // Auth
     const { data: { user } } = await supabaseServer().auth.getUser();
