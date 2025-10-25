@@ -3,19 +3,15 @@ import { randomUUID } from "crypto";
 
 export function middleware(req: NextRequest) {
   const res = NextResponse.next();
-
-  const AID_NAME = "aid";
-  if (!req.cookies.has(AID_NAME)) {
-    res.cookies.set(AID_NAME, randomUUID(), {
-      httpOnly: false,
+  const hasAid = req.cookies.get("aid")?.value;
+  if (!hasAid) {
+    res.cookies.set("aid", randomUUID(), {
+      httpOnly: true,
       sameSite: "Lax",
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       path: "/",
-      maxAge: 60 * 60 * 24 * 365,
+      maxAge: 60 * 60 * 24 * 365 // 1 year
     });
   }
   return res;
 }
-
-// If you want to limit where it runs, you can add:
-// export const config = { matcher: ["/((?!_next|api/health|favicon.ico).*)"] };
