@@ -1,7 +1,11 @@
 import * as Sentry from "@sentry/nextjs";
 
-Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN || "",
-  tracesSampleRate: 0.1,      // adjust later
-  replaysSessionSampleRate: 0, // set >0 if you enable @sentry/replay
-});
+if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    tracesSampleRate: 0.1,
+    replaysOnErrorSampleRate: 1.0,
+    integrations: (integrations) => integrations,
+    enabled: process.env.NODE_ENV === "production",
+  });
+}
