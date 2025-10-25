@@ -1,5 +1,7 @@
 // app/api/comments/flag/route.ts
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { rateLimit } from "@/lib/rateLimit";
 import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
 
@@ -12,18 +14,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing commentId" }, { status: 400 });
     }
 
-    // comments.id is BIGINT in your DB → coerce to number for comparisons / FKs
+    // comments.id is BIGINT → coerce to number for comparisons
     const idNum = typeof commentId === "string" ? Number(commentId) : commentId;
     if (!Number.isFinite(idNum)) {
       return NextResponse.json({ error: "Invalid commentId" }, { status: 400 });
     }
+
+    // 🔒 Rate limit: 20 flags/min per anon id
+    const aid = cookies().get("aid")?.value || "anon";
+    const ok = await rateLimit(`${aid}:comments_flag`, 20, 60_000);
+    if (!ok) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
 
     // Auth
     const sb = supabaseServer();
     const { data: { user } } = await sb.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Get comment (prevent self-flag if desired)
+    // Fetch the comment
     const { data: cmt, error: getErr } = await supabaseService
       .from("comments")
       .select("id, user_id, status, flags_count")
@@ -34,21 +41,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Comment not found" }, { status: 404 });
     }
 
+    // Prevent users from flagging their own comment
     if (cmt.user_id === user.id) {
       return NextResponse.json({ error: "You cannot flag your own comment." }, { status: 400 });
     }
 
-    // Record flag (unique per user/comment via PK(comment_id, user_id))
-    const { error: upErr } = await supabaseService
+    // Record flag (unique per user/comment via PK or unique constraint)
+    const { error: insErr } = await supabaseService
       .from("comment_flags")
       .insert({ comment_id: idNum, user_id: user.id });
 
-    // Ignore duplicate-key errors (user already flagged)
-    if (upErr && !/duplicate key/i.test(upErr.message)) {
-      return NextResponse.json({ error: upErr.message }, { status: 400 });
+    // Ignore duplicate-key errors (already flagged by this user)
+    if (insErr && !/duplicate key/i.test(insErr.message)) {
+      return NextResponse.json({ error: insErr.message }, { status: 400 });
     }
 
-    // Recompute count from flags table
+    // Recompute count
     const { count, error: cntErr } = await supabaseService
       .from("comment_flags")
       .select("*", { count: "exact", head: true })
@@ -60,7 +68,7 @@ export async function POST(req: Request) {
     // Update flags_count and maybe status
     const patch: Record<string, any> = { flags_count: flags };
     if (flags >= FLAG_THRESHOLD && cmt.status !== "flagged" && cmt.status !== "hidden") {
-      patch.status = "flagged"; // show in moderation queue
+      patch.status = "flagged"; // surface to moderation queue
     }
 
     const { error: updErr } = await supabaseService
