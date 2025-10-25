@@ -7,6 +7,39 @@ import Comments from "@/components/Comments";
 import { getReactions } from "@/lib/reactions";
 import LikeButton from "@/components/LikeButton";
 import SaveButton from "@/components/SaveButton";
+import type { Metadata } from "next";
+import { getStoryBySlug } from "@/lib/data";
+
+export async function generateMetadata(
+  { params }: { params: { slug: string } }
+): Promise<Metadata> {
+  try {
+    const s: any = await getStoryBySlug(params.slug);
+    const title = s?.title ? `${s.title} — Aikya` : "Aikya — Good Around You";
+    const description = s?.dek || "Local-first, uplifting stories with life lessons.";
+    const url = `https://aikyanow.netlify.app/story/${params.slug}`;
+    const image = s?.hero_image || "/og.jpg";
+
+    return {
+      title,
+      description,
+      alternates: { canonical: url },
+      openGraph: {
+        title, description, url, type: "article",
+        images: [{ url: image }],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title, description, images: [image],
+      },
+    };
+  } catch {
+    return {
+      title: "Aikya — Good Around You",
+      description: "Local-first, uplifting stories with life lessons.",
+    };
+  }
+}
 
 export default async function StoryPage({ params }: { params: { slug: string } }) {
   const s = stories.find((x) => x.slug === params.slug);
