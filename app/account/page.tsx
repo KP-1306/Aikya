@@ -5,7 +5,9 @@ import UpdateProfileForm from "@/components/UpdateProfileForm";
 
 export default async function AccountPage() {
   const sb = supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
   if (!user) redirect("/signin");
 
   const { data: profile } = await sb
@@ -15,14 +17,21 @@ export default async function AccountPage() {
     .maybeSingle();
 
   return (
-
-    <p className="text-sm">
-  See your <a href="/account/saved" className="underline">Saved stories</a>.
-</p>
-    
     <div className="container max-w-2xl py-10">
+      <div className="mb-4">
+        <p className="text-sm">
+          See your{" "}
+          <a href="/account/saved" className="underline">
+            Saved stories
+          </a>
+          .
+        </p>
+      </div>
+
       <h1 className="text-2xl font-bold mb-2">Your account</h1>
-      <p className="text-neutral-600 mb-6">Manage the details used to personalize local news.</p>
+      <p className="text-neutral-600 mb-6">
+        Manage the details used to personalize local news.
+      </p>
 
       {/* Read-only basics */}
       <div className="card p-6 space-y-3 mb-6">
