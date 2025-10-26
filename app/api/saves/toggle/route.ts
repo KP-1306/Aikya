@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
-import { awardKarma } from "@/lib/karma/server"; // keep if you already have this helper
+import { awardKarma } from "@/lib/karma/server"; // ✅ correct alias
 
 export const runtime = "nodejs";
 
@@ -14,14 +14,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing storyId" }, { status: 400 });
     }
 
-    // --- Auth FIRST (so `user` exists before any usage)
+    // Auth
     const sb = supabaseServer();
     const {
       data: { user },
     } = await sb.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // --- Toggle save
+    // Toggle save
     const { data: existing, error: getErr } = await supabaseService
       .from("saves")
       .select("id")
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
       saved = true;
     }
 
-    // --- Recount (optional, if you display save count)
+    // Recount (optional)
     const { count, error: cntErr } = await supabaseService
       .from("saves")
       .select("*", { count: "exact", head: true })
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     if (cntErr) return NextResponse.json({ error: cntErr.message }, { status: 400 });
     const saveCount = count || 0;
 
-    // --- Analytics (best-effort)
+    // Analytics (best-effort)
     try {
       const anon = cookies().get("aid")?.value;
       const ref = headers().get("referer") || headers().get("referrer") || "";
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
       // ignore analytics errors
     }
 
-    // --- Karma award (only when actually saved, and best-effort)
+    // Karma (best-effort)
     if (saved) {
       try {
         await awardKarma(user.id, "save", { storyId });
