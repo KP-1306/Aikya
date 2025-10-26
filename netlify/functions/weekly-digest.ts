@@ -2,27 +2,22 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-// Use your public keys for read-only access, or switch to service role envs if you created them.
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const RESEND_KEY = process.env.RESEND_API_KEY || "";
 
-// Initialise Supabase once (Netlify may reuse the function container)
+// Reuse client if the function container is warm
 const sb = SUPABASE_URL && SUPABASE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_KEY)
   : null;
 
-// Export a plain handler — no Netlify types required
+// Export a plain handler – no @netlify/functions types needed
 export const handler = async (_event: any, _context: any) => {
   try {
     if (!sb) {
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ ok: true, note: "Supabase not configured" }),
-      };
+      return { statusCode: 200, body: JSON.stringify({ ok: true, note: "Supabase not configured" }) };
     }
 
-    // Fetch the most recent published stories in the last 7 days
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: stories, error } = await sb
       .from("stories")
@@ -33,16 +28,12 @@ export const handler = async (_event: any, _context: any) => {
       .limit(10);
 
     if (error) {
-      // Still return 200 so the cron doesn’t fail the whole deploy
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ ok: false, error: error.message }),
-      };
+      return { statusCode: 200, body: JSON.stringify({ ok: false, error: error.message }) };
     }
 
-    // Optional email send with Resend — only if the API key exists.
-    // Dynamic import avoids build-time dependency on "resend".
+    // Optional email via Resend – only if key exists.
     if (RESEND_KEY && stories && stories.length) {
+      // @ts-ignore  (shim provided in types/shims-resend.d.ts when package is absent)
       const { Resend } = await import("resend");
       const resend = new Resend(RESEND_KEY);
 
@@ -58,7 +49,7 @@ export const handler = async (_event: any, _context: any) => {
         </ul>
       `;
 
-      // TODO: add your recipients when ready
+      // Uncomment & set recipients when you’re ready to actually send
       // await resend.emails.send({
       //   from: "Aikya <news@your-domain>",
       //   to: ["you@example.com"],
@@ -67,14 +58,8 @@ export const handler = async (_event: any, _context: any) => {
       // });
     }
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ ok: true, count: stories?.length ?? 0 }),
-    };
+    return { statusCode: 200, body: JSON.stringify({ ok: true, count: stories?.length ?? 0 }) };
   } catch (e: any) {
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ ok: false, error: e?.message || "Unknown error" }),
-    };
+    return { statusCode: 200, body: JSON.stringify({ ok: false, error: e?.message || "Unknown error" }) };
   }
 };
