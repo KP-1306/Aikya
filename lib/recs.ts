@@ -50,7 +50,8 @@ export async function getRecommendations(opts: {
   // 1) Prefer user’s state (recent, published)
   let q = sb
     .from("stories")
-    .select<StoryRow>(
+  //  NOTE: do NOT pass a generic here; it expects a string of columns
+    .select(
       "id, slug, title, hero_image, city, state, is_published, published_at"
     )
     .eq("is_published", true)
@@ -60,15 +61,17 @@ export async function getRecommendations(opts: {
   if (opts.state) q = q.eq("state", opts.state);
 
   const { data: primary } = await q;
+  const primaryRows = (primary ?? []) as StoryRow[];
 
   // If we already have enough, return
-  if ((primary?.length ?? 0) >= limit) return primary ?? [];
+  if (primaryRows.length >= limit) return primaryRows;
 
   // 2) Fallback: globally-popular last 30 days (by likes+saves/views)
   // Expect your SQL RPC `popular_stories_last_30d(p_limit integer)` to return the same columns as StoryRow
   const { data: popular } = await sb.rpc("popular_stories_last_30d", {
     p_limit: limit,
   });
+  const popularRows = (popular ?? []) as StoryRow[];
 
-  return mergeRecs<StoryRow>(primary ?? [], (popular as StoryRow[]) ?? [], limit);
+  return mergeRecs<StoryRow>(primaryRows, popularRows, limit);
 }
