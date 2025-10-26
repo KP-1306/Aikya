@@ -1,10 +1,11 @@
 // app/api/saves/toggle/route.ts
 import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
-import { rateLimit } from "@/lib/rateLimit";
 import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
-import { awardKarma } from "@/lib/karma";
+import { awardKarma } from "@/lib/karma/server"; // keep if you already have this helper
+
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
@@ -13,28 +14,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing storyId" }, { status: 400 });
     }
 
-    // 🔒 Rate limit: 60 save toggles per minute per anon id
-    const aid = cookies().get("aid")?.value || "anon";
-    const ok = await rateLimit(`${aid}:saves_toggle`, 60, 60_000);
-    if (!ok) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-
-    await awardKarma(user.id, "save", { storyId });
-
-    // Auth
-    const { data: { user } } = await supabaseServer().auth.getUser();
+    // --- Auth FIRST (so `user` exists before any usage)
+    const sb = supabaseServer();
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Toggle save: if exists → delete; else → insert
+    // --- Toggle save
     const { data: existing, error: getErr } = await supabaseService
       .from("saves")
       .select("id")
       .eq("story_id", storyId)
       .eq("user_id", user.id)
       .maybeSingle();
+
     if (getErr) return NextResponse.json({ error: getErr.message }, { status: 400 });
 
     let saved: boolean;
-
     if (existing) {
       const { error } = await supabaseService
         .from("saves")
@@ -46,14 +43,11 @@ export async function POST(req: Request) {
       const { error } = await supabaseService
         .from("saves")
         .insert({ story_id: storyId, user_id: user.id });
-      // ignore duplicate key races
-      if (error && !/duplicate key/i.test(error.message)) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
-      }
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       saved = true;
     }
 
-    // Recount saves for this story (if you display save count)
+    // --- Recount (optional, if you display save count)
     const { count, error: cntErr } = await supabaseService
       .from("saves")
       .select("*", { count: "exact", head: true })
@@ -61,24 +55,37 @@ export async function POST(req: Request) {
     if (cntErr) return NextResponse.json({ error: cntErr.message }, { status: 400 });
     const saveCount = count || 0;
 
-    // 🔹 Analytics (best-effort)
+    // --- Analytics (best-effort)
     try {
+      const anon = cookies().get("aid")?.value;
       const ref = headers().get("referer") || headers().get("referrer") || "";
       const ua = headers().get("user-agent") || "";
       await supabaseService.from("analytics_events").insert({
-        aid,                         // if your column is `anon_id`, change to { anon_id: aid, ... }
         kind: "save",
         story_id: storyId,
         user_id: user.id,
+        anon_id: anon ?? crypto.randomUUID(),
         referrer: ref.slice(0, 512),
         ua: ua.slice(0, 512),
       });
     } catch {
-      // ignore analytics failures
+      // ignore analytics errors
+    }
+
+    // --- Karma award (only when actually saved, and best-effort)
+    if (saved) {
+      try {
+        await awardKarma(user.id, "save", { storyId });
+      } catch {
+        // ignore karma errors
+      }
     }
 
     return NextResponse.json({ saved, saveCount });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
   }
 }
