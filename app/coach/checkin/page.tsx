@@ -1,43 +1,82 @@
-"use client";
+// app/coach/checkin/page.tsx
+import Link from "next/link";
 
-import { useEffect, useState } from "react";
+type CheckinOK = {
+  date: string;         // ISO date for the last check-in
+  streak: number;       // current streak in days
+  // you can add more fields later (e.g., score, today, etc.)
+};
 
-type Resp = { ok: true; date: string; streak: number; suggestions: {id:string;text:string}[] } | { error: string };
+type CheckinResp = CheckinOK | { error: string };
 
-export default function CheckinPage() {
-  const [data, setData] = useState<Resp | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+export const dynamic = "force-dynamic";
 
-  useEffect(() => {
-    fetch("/api/coach/checkin", { method: "POST" })
-      .then(r => r.json())
-      .then((j: Resp) => {
-        if ("error" in j) setErr(j.error);
-        else setData(j);
-      })
-      .catch(() => setErr("Failed"));
-  }, []);
+async function getCheckin(): Promise<CheckinResp> {
+  // Use a relative URL; disable caching for always-fresh data
+  const res = await fetch("/api/coach/checkin", { cache: "no-store" });
+  try {
+    return (await res.json()) as CheckinResp;
+  } catch {
+    return { error: "Unable to parse server response." };
+  }
+}
+
+export default async function CoachCheckinPage() {
+  const data = await getCheckin();
+
+  const isError = "error" in data;
+  const date = !isError ? data.date : null;
+  const streak = !isError ? data.streak : 0;
 
   return (
-    <div className="container max-w-xl py-8">
-      <h1 className="text-2xl font-bold mb-2">Daily check-in</h1>
-      {err && <div className="rounded bg-red-50 text-red-700 px-3 py-2 text-sm">{err}</div>}
-      {!data ? (
-        <div className="text-neutral-500">Loading…</div>
-      ) : (
-        <div className="space-y-4">
-          <div className="rounded-xl border bg-white/70 p-4">
-            <div className="text-sm text-neutral-500">Date: {data.date}</div>
-            <div className="text-sm text-neutral-600">Streak: {data.streak} days 🔥</div>
+    <div className="container max-w-2xl py-8 space-y-6">
+      <header>
+        <h1 className="text-2xl font-bold">Aikya Karma Coach</h1>
+        <p className="text-sm text-neutral-600">
+          Build a daily habit of small, positive actions.
+        </p>
+      </header>
+
+      {/* Status card */}
+      <div className="space-y-4">
+        <div className="rounded-xl border bg-white/70 p-4">
+          {isError ? (
+            <div className="text-sm text-red-600">
+              {data.error || "Something went wrong."}
+            </div>
+          ) : (
+            <>
+              <div className="text-sm text-neutral-500">
+                Date: {date}
+              </div>
+              <div className="text-sm text-neutral-600">
+                Streak: {streak} days 🔥
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="rounded-xl border bg-white/70 p-4">
+          <div className="text-sm text-neutral-700">
+            Keep the streak going by checking in once a day.
           </div>
-          <div className="rounded-xl border bg-white/70 p-4">
-            <h2 className="text-lg font-semibold mb-2">Suggestions</h2>
-            <ul className="list-disc pl-5 space-y-1">
-              {data.suggestions.map(s => <li key={s.id}>{s.text}</li>)}
-            </ul>
+          <div className="mt-3 flex gap-2">
+            <Link
+              href="/coach/checkin/new"
+              className="rounded-full bg-brand text-white px-4 py-2 text-sm"
+            >
+              Check in now
+            </Link>
+            <Link
+              href="/coach/history"
+              className="rounded-full border px-4 py-2 text-sm hover:bg-neutral-50"
+            >
+              View history
+            </Link>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
