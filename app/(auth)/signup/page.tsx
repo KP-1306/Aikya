@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-// NOTE: use relative path (adjust depth to your repo layout)
-import { supabase } from "../../../lib/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 
 export default function SignUpPage() {
   const [email, setEmail] = useState("");
@@ -14,7 +13,9 @@ export default function SignUpPage() {
 
   async function createAccount(e: React.FormEvent) {
     e.preventDefault();
-    setError(null); setNotice(null); setLoading(true);
+    setError(null);
+    setNotice(null);
+    setLoading(true);
 
     const { error } = await supabase.auth.signUp({
       email,
@@ -33,21 +34,35 @@ export default function SignUpPage() {
       <p className="text-neutral-600 mb-6">Sign up to comment and save stories.</p>
 
       <div className="card p-6 space-y-4">
-        {error && <div className="rounded bg-red-50 text-red-700 px-3 py-2 text-sm">{error}</div>}
-        {notice && <div className="rounded bg-green-50 text-green-700 px-3 py-2 text-sm">{notice}</div>}
+        {error && (
+          <div className="rounded bg-red-50 text-red-700 px-3 py-2 text-sm">
+            {error}
+          </div>
+        )}
+        {notice && (
+          <div className="rounded bg-green-50 text-green-700 px-3 py-2 text-sm">
+            {notice}
+          </div>
+        )}
 
         <form className="space-y-3" onSubmit={createAccount}>
           <div>
             <label className="block text-sm font-medium">Email</label>
             <input
-              type="email" required value={email} onChange={(e)=>setEmail(e.target.value)}
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="mt-1 w-full rounded-xl border px-3 py-2"
             />
           </div>
           <div>
             <label className="block text-sm font-medium">Password</label>
             <input
-              type="password" required value={pass} onChange={(e)=>setPass(e.target.value)}
+              type="password"
+              required
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
               className="mt-1 w-full rounded-xl border px-3 py-2"
             />
           </div>
@@ -57,6 +72,7 @@ export default function SignUpPage() {
         </form>
 
         <hr className="my-2" />
+
         <button
           onClick={() =>
             supabase.auth.signInWithOAuth({
@@ -71,7 +87,9 @@ export default function SignUpPage() {
 
         <p className="text-sm text-neutral-600">
           Already have an account?{" "}
-          <Link href="/signin" className="underline underline-offset-2">Sign in</Link>
+          <Link href="/signin" className="underline underline-offset-2">
+            Sign in
+          </Link>
         </p>
       </div>
     </div>
