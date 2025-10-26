@@ -1,57 +1,38 @@
 // app/account/page.tsx
-import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
-import UpdateProfileForm from "@/components/UpdateProfileForm";
+import ProfileForm from "@/components/ProfileForm";
+import { redirect } from "next/navigation";
 
 export default async function AccountPage() {
   const sb = supabaseServer();
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) redirect("/signin");
+  const { data: { user } } = await sb.auth.getUser();
 
+  if (!user) {
+    redirect("/signin");
+  }
+
+  // Get the user's profile row (optional fields can be null)
   const { data: profile } = await sb
     .from("profiles")
-    .select("full_name, state, city, avatar_url, created_at")
+    .select("full_name, state, city, avatar_url")
     .eq("id", user.id)
     .maybeSingle();
 
   return (
-    <div className="container max-w-2xl py-10">
-      <div className="mb-4">
-        <p className="text-sm">
-          See your{" "}
-          <a href="/account/saved" className="underline">
-            Saved stories
-          </a>
-          .
+    <div className="container max-w-2xl py-8 space-y-6">
+      <header>
+        <h1 className="text-2xl font-bold">Your account</h1>
+        <p className="text-sm text-neutral-600">
+          Update your name and location to personalize your feed.
         </p>
-      </div>
+      </header>
 
-      <h1 className="text-2xl font-bold mb-2">Your account</h1>
-      <p className="text-neutral-600 mb-6">
-        Manage the details used to personalize local news.
-      </p>
-
-      {/* Read-only basics */}
-      <div className="card p-6 space-y-3 mb-6">
-        <div className="text-sm">
-          <span className="font-medium">Email:</span> {user.email}
-        </div>
-        <div className="text-sm">
-          <span className="font-medium">Member since:</span>{" "}
-          {new Date(profile?.created_at ?? user.created_at!).toDateString()}
-        </div>
-      </div>
-
-      {/* Editable fields */}
       <div className="card p-6">
-        <h2 className="text-lg font-semibold mb-3">Profile</h2>
-        <UpdateProfileForm
+        <ProfileForm
           initialFullName={profile?.full_name ?? ""}
-          initialStateValue={profile?.state ?? ""}
+          initialState={profile?.state ?? ""}
           initialCity={profile?.city ?? ""}
-          initialAvatarUrl={profile?.avatar_url ?? null}
+          initialAvatarUrl={profile?.avatar_url ?? ""}
         />
       </div>
     </div>
