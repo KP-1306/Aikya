@@ -3,6 +3,8 @@ const nextConfig = {
   reactStrictMode: true,
   images: { remotePatterns: [{ protocol: "https", hostname: "**" }] },
 
+  serverComponentsExternalPackages: ["@resvg/resvg-js"],
+  
   async headers() {
     return [{
       source: "/(.*)",
