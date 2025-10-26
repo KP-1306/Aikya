@@ -1,20 +1,18 @@
 // netlify/functions/weekly-digest.ts
+
 import { createClient } from "@supabase/supabase-js";
-import { Resend } from "resend";
 
 // Use your public keys for read-only access, or switch to service role envs if you created them.
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const RESEND_KEY = process.env.RESEND_API_KEY || "";
 
-// Initialise clients once (Netlify may reuse the function container)
+// Initialise Supabase once (Netlify may reuse the function container)
 const sb = SUPABASE_URL && SUPABASE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_KEY)
   : null;
 
-const resend = RESEND_KEY ? new Resend(RESEND_KEY) : null;
-
-// Export a plain handler — no type import needed
+// Export a plain handler — no Netlify types required
 export const handler = async (_event: any, _context: any) => {
   try {
     if (!sb) {
@@ -42,8 +40,12 @@ export const handler = async (_event: any, _context: any) => {
       };
     }
 
-    // If you’ve configured RESEND_API_KEY, send a tiny digest (stub)
-    if (resend && stories && stories.length) {
+    // Optional email send with Resend — only if the API key exists.
+    // Dynamic import avoids build-time dependency on "resend".
+    if (RESEND_KEY && stories && stories.length) {
+      const { Resend } = await import("resend");
+      const resend = new Resend(RESEND_KEY);
+
       const html = `
         <h2>Aikya — Weekly highlights</h2>
         <ul>
@@ -56,7 +58,7 @@ export const handler = async (_event: any, _context: any) => {
         </ul>
       `;
 
-      // TODO: replace with your audience list / recipients
+      // TODO: add your recipients when ready
       // await resend.emails.send({
       //   from: "Aikya <news@your-domain>",
       //   to: ["you@example.com"],
