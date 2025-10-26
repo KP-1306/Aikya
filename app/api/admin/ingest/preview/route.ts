@@ -3,13 +3,12 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import OpenAI from "openai";
 
-// Run as a Netlify/Node function (NOT Edge)
+// Force Node runtime (jsdom requires Node, not Edge)
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
-// Create a client only if the key is present
-const openai =
-  process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 export async function POST(req: Request) {
   try {
@@ -18,7 +17,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing url" }, { status: 400 });
     }
 
-    // Auth + admin check
+    // ── Auth + admin guard
     const sb = supabaseServer();
     const {
       data: { user },
@@ -32,25 +31,22 @@ export async function POST(req: Request) {
       .maybeSingle();
     if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    // Fetch the page
+    // ── Fetch page HTML
     const res = await fetch(url, {
-      headers: {
-        "user-agent": "AikyaBot/1.0 (+https://aikyanow.netlify.app)",
-      },
-      redirect: "follow",
+      headers: { "user-agent": "AikyaBot/1.0 (+https://aikyanow.netlify.app)" },
     });
     if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
     const html = await res.text();
 
-    // Dynamically import server-only libs (avoids bundling for Edge)
-    const { JSDOM } = await import("jsdom");
-    const { Readability } = await import("@mozilla/readability");
+    // ── Dynamically import server-only libs (avoid edge bundling)
+    const { JSDOM } = (await import("jsdom")) as any;
+    const { Readability } = (await import("@mozilla/readability")) as any;
 
-    // Extract main article content
+    // ── Extract main article
     const dom = new JSDOM(html, { url });
     const reader = new Readability(dom.window.document);
     const article = reader.parse();
-    const text = article?.textContent?.trim() || "";
+    const text = (article?.textContent ?? "").trim();
 
     if (!text || text.length < 200) {
       return NextResponse.json(
@@ -59,7 +55,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Build the draft (LLM when available; fallback otherwise)
+    // ── Build a structured draft (LLM if available, fallback otherwise)
     let draft: any;
 
     if (openai) {
@@ -98,7 +94,10 @@ ARTICLE TEXT:
         city: parsed.city || null,
         state: parsed.state || null,
         country: parsed.country || "IN",
-        read_minutes: parsed.read_minutes ?? Math.max(2, Math.round(text.split(/\s+/).length / 200)),
+        read_minutes:
+          typeof parsed.read_minutes === "number"
+            ? parsed.read_minutes
+            : Math.max(2, Math.round(text.split(/\s+/).length / 200)),
         hero_image: null,
         hero_alt: null,
         hero_credit: null,
@@ -108,10 +107,9 @@ ARTICLE TEXT:
             : [{ name: article?.siteName || new URL(url).hostname, url }],
       };
     } else {
-      // Fallback without LLM: simple heuristic summary
+      // Fallback without LLM: quick summary from the first paragraphs
       const paras = text.split(/\n+/).filter(Boolean);
       const first = paras[0] || "";
-
       draft = {
         title: article?.title || first.slice(0, 80),
         dek: paras.slice(1, 3).join(" ").slice(0, 200),
@@ -133,6 +131,9 @@ ARTICLE TEXT:
 
     return NextResponse.json({ draft });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
   }
 }
