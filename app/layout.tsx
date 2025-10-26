@@ -3,7 +3,7 @@ import "../styles/globals.css";
 import type { Metadata } from "next";
 import { clsx } from "clsx";
 import Link from "next/link";
-import NavUser from "@/components/NavUser";
+import NavUser from "@/components/NavUser";        // server component – safe to use in layout
 import PageviewPing from "@/components/PageviewPing";
 
 export const metadata: Metadata = {
@@ -32,48 +32,39 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className={clsx("min-h-screen bg-neutral-50")}>
-        {/* analytics ping */}
-        <PageviewPing />
-
-        {/* header */}
         <header className="border-b bg-white/70 backdrop-blur">
           <div className="container flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2 font-semibold">
               <span className="text-brand">☀️ Aikya</span>News
             </Link>
-            
-<Link href="/coach" className="hover:underline">Coach</Link>
 
-            {/* right side nav */}
+            {/* right side of the nav */}
             <nav className="flex items-center gap-4 text-sm">
-              <Link href="/search" className="hover:underline">
-                Search
-              </Link>
               <Link href="/submit" className="hover:underline">
                 Submit
               </Link>
               <Link href="/about" className="hover:underline">
                 About
               </Link>
-              {/* account menu (server component) */}
-              {/* @ts-expect-error Server Component in layout */}
+              {/* account menu */}
               <NavUser />
             </nav>
           </div>
         </header>
 
-        {/* main */}
+        {/* pageview analytics ping */}
+        <PageviewPing />
+
         <main className="container py-6">{children}</main>
 
-        {/* footer */}
         <footer className="border-t py-10 text-sm text-neutral-500">
           <div className="container flex justify-between">
             <p>© {new Date().getFullYear()} Aikya</p>
             <p>
               <Link href="/privacy" className="hover:underline">
                 Privacy
-              </Link>
-              {" · "}
+              </Link>{" "}
+              ·{" "}
               <Link href="/terms" className="hover:underline">
                 Terms
               </Link>
