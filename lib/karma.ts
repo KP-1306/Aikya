@@ -1,49 +1,56 @@
+// lib/karma.ts
 import { requireSupabaseService } from "@/lib/supabase/service";
 
+export type KarmaMeta = Record<string, unknown>;
 
-const REASONS: Record<string, number> = {
-  page_streak: 5,
-  like: 2,
-  save: 3,
-  comment_approved: 5,
-  support_completed: 25,
-  proof_cert: 40,
-};
-
-export async function awardKarma(userId: string, reason: keyof typeof REASONS, meta: any = {}) {
-  const points = REASONS[reason] ?? 1;
-
-  // 1) ledger
-  const { error: ledErr } = await supabaseService.from("karma_ledger").insert({
-    user_id: userId, points, reason, meta
-  });
-  if (ledErr) throw new Error(ledErr.message);
-
+/**
+ * Award karma to a user and log it to the ledger.
+ * Safe to call from API routes. Creates the Supabase service client lazily.
+ */
+export async function awardKarma(
+  userId: string,
+  points: number,
+  reason: string,
+  meta?: KarmaMeta
+): Promise<void> {
   const supabaseService = requireSupabaseService();
 
-  // 2) bump profile totals
-  const { data: prof } = await supabaseService
+  // 1) ledger entry
+  const { error: ledErr } = await supabaseService
+    .from("karma_ledger")
+    .insert({
+      user_id: userId,
+      points,
+      reason,
+      meta,
+    });
+
+  if (ledErr) throw new Error(ledErr.message);
+
+  // 2) upsert/accumulate total in profiles
+  //    (keeps a quick tally alongside the immutable ledger)
+  const { data: existing, error: fetchErr } = await supabaseService
     .from("karma_profiles")
-    .select("user_id,total_points")
+    .select("id, karma")
     .eq("user_id", userId)
     .maybeSingle();
 
-  const total = (prof?.total_points ?? 0) + points;
+  if (fetchErr) throw new Error(fetchErr.message);
 
-  // calc level via table
-  const { data: levels } = await supabaseService
-    .from("karma_levels")
-    .select("level,min_points")
-    .order("min_points", { ascending: true });
+  if (!existing) {
+    const { error: insertErr } = await supabaseService
+      .from("karma_profiles")
+      .insert({ user_id: userId, karma: points });
 
-  let newLevel = 1;
-  (levels ?? []).forEach(l => { if (total >= l.min_points) newLevel = l.level; });
+    if (insertErr) throw new Error(insertErr.message);
+  } else {
+    const newTotal = (existing.karma ?? 0) + points;
 
-  const { error: upErr } = await supabaseService
-    .from("karma_profiles")
-    .upsert({ user_id: userId, total_points: total, level: newLevel }, { onConflict: "user_id" });
+    const { error: updateErr } = await supabaseService
+      .from("karma_profiles")
+      .update({ karma: newTotal })
+      .eq("id", existing.id);
 
-  if (upErr) throw new Error(upErr.message);
-
-  return { points, total, level: newLevel };
+    if (updateErr) throw new Error(updateErr.message);
+  }
 }
