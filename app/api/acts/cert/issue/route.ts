@@ -1,71 +1,98 @@
+// app/api/acts/cert/issue/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { trySupabaseService } from "@/lib/supabase/service";
+import { certificateSVG } from "@/lib/certificates/template";
 
-type Body = { actId: string; issueYT?: boolean };
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+type Body = {
+  actId?: string;
+};
+
+function toBytes(s: string) {
+  return new TextEncoder().encode(s);
+}
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json() as Body;
-    if (!body.actId) return NextResponse.json({ error: "Missing actId" }, { status: 400 });
+    const body = (await req.json().catch(() => ({}))) as Body;
+    if (!body.actId) {
+      return NextResponse.json({ error: "Missing actId" }, { status: 400 });
+    }
 
-    // Admin guard
+    // Auth + admin guard
     const sb = supabaseServer();
-    const { data: { user } } = await sb.auth.getUser();
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const { data: admin } = await sb.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
-    if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    const { data: admin } = await sb
+      .from("admins")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!admin) return NextResponse.json({ error: "Admins only" }, { status: 403 });
+
+    // Service client (must exist on server)
+    const svc = trySupabaseService();
+    if (!svc) {
+      return NextResponse.json(
+        { error: "Server missing SUPABASE_SERVICE_ROLE_KEY" },
+        { status: 500 }
+      );
+    }
 
     // Load act
-    const { data: act, error: aErr } = await supabaseService
+    const { data: act, error: aErr } = await svc
       .from("good_acts")
-      .select("id, level, status")
+      .select("id, person_name, created_at, certificate_url")
       .eq("id", body.actId)
       .single();
-    if (aErr || !act) return NextResponse.json({ error: "Act not found" }, { status: 404 });
-    if (act.status !== "verified") {
-      return NextResponse.json({ error: "Act must be verified first" }, { status: 400 });
+
+    if (aErr || !act) {
+      return NextResponse.json({ error: "Act not found" }, { status: 404 });
     }
 
-    // Generate a simple certificate URL placeholder (you can replace with a real generator later)
-    const certificateUrl = `https://${
-      process.env.NEXT_PUBLIC_SUPABASE_PROJECT_REF || "example"
-    }.supabase.co/storage/v1/object/public/certificates/${act.id}.txt`;
+    // Build certificate (SVG only; PNG conversion intentionally removed for deploy safety)
+    const svg = certificateSVG({
+      actId: act.id,
+      personName: act.person_name ?? "Friend of Aikya",
+      dateISO: act.created_at ?? undefined,
+    });
 
-    // Save certificate URL on act
-    const { error: uErr } = await supabaseService
+    const bytes = toBytes(svg);
+    const contentType = "image/svg+xml";
+    const ext = "svg";
+    const path = `${act.id}/certificate-${Date.now()}.${ext}`;
+
+    // Upload to storage bucket `certificates`
+    const { error: upErr } = await svc
+      .storage
+      .from("certificates")
+      .upload(path, bytes, { contentType, upsert: true });
+
+    if (upErr) {
+      return NextResponse.json({ error: upErr.message }, { status: 400 });
+    }
+
+    // Public URL & persist back on the act
+    const { data: pub } = svc.storage.from("certificates").getPublicUrl(path);
+    const url = pub?.publicUrl ?? null;
+
+    const { error: updErr } = await svc
       .from("good_acts")
-      .update({ certificate_url: certificateUrl, updated_at: new Date().toISOString() })
+      .update({ certificate_url: url })
       .eq("id", act.id);
-    if (uErr) return NextResponse.json({ error: uErr.message }, { status: 400 });
 
-    // Reward rows
-    const rewards = [
-      {
-        act_id: act.id,
-        level_issued: act.level,
-        kind: "certificate",
-        payload: { url: certificateUrl },
-        fulfilled: true
-      }
-    ];
-
-    // Only Level ≤ 2 eligible for YT animation
-    if (body.issueYT && act.level <= 2) {
-      rewards.push({
-        act_id: act.id,
-        level_issued: act.level,
-        kind: "yt_animation",
-        payload: { status: "queued" },
-        fulfilled: false
-      } as any);
+    if (updErr) {
+      return NextResponse.json({ error: updErr.message }, { status: 400 });
     }
 
-    const { error: rErr } = await supabaseService.from("rewards").insert(rewards);
-    if (rErr) return NextResponse.json({ error: rErr.message }, { status: 400 });
-
-    return NextResponse.json({ ok: true, certificateUrl });
-  } catch (e:any) {
-    return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });
+    return NextResponse.json({ ok: true, url, format: ext });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
 }
