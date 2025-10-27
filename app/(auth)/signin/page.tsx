@@ -49,7 +49,7 @@ export default function SignInPage() {
 
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: redirectTo },
+        options: { emailRedirectTo: `${base}/auth/callback` }
       });
 
       setLoading(null);
