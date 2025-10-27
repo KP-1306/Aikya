@@ -2,12 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { supabase } from "@/lib/supabase/client";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -15,8 +10,7 @@ export default function SignInPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] =
-    useState<null | "pwd" | "magic">(null);
+  const [loading, setLoading] = useState<null | "pwd" | "magic">(null);
   const [message, setMessage] = useState<string | null>(q.get("error") || null);
 
   const redirectTo = useMemo(() => {
@@ -43,7 +37,7 @@ export default function SignInPage() {
         return;
       }
 
-      // We have a session on the client; make sure server components see it.
+      // Ensure server components see the cookie right away.
       router.replace("/");
       router.refresh();
     },
@@ -53,10 +47,6 @@ export default function SignInPage() {
   const handleMagicLink = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!email) {
-        setMessage("Enter your email first.");
-        return;
-      }
       setMessage(null);
       setLoading("magic");
 
@@ -133,7 +123,6 @@ export default function SignInPage() {
         <span className="h-px flex-1 bg-neutral-200" />
       </div>
 
-      {/* Magic link */}
       <form onSubmit={handleMagicLink}>
         <button
           type="submit"
