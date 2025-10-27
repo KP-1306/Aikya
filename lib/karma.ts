@@ -1,7 +1,25 @@
 // lib/karma.ts
 import { requireSupabaseService } from "@/lib/supabase/service";
 
-export type KarmaAction = "comment" | "save" | "like" | "checkin";
+export type KarmaAction =
+  | "comment"
+  | "save"
+  | "like"
+  | "checkin"
+  | "page_streak"; // <-- added
+
+function pointsFor(action: KarmaAction): number {
+  switch (action) {
+    case "comment":
+      return 2;
+    // small rewards for lightweight actions
+    case "save":
+    case "like":
+    case "checkin":
+    case "page_streak":
+      return 1;
+  }
+}
 
 /**
  * Best-effort: bump user karma and (optionally) log a ledger row.
@@ -12,29 +30,28 @@ export type KarmaAction = "comment" | "save" | "like" | "checkin";
  *   - RPC: karma_bump(p_user_id uuid, p_points int)
  */
 export async function awardKarma(
-  userId: string | number,             // <-- accept UUID string (or numeric id)
+  userId: string | number,                 // accepts UUID string (or numeric id)
   action: KarmaAction,
   meta?: Record<string, unknown>
 ): Promise<void> {
-  // Coerce to string because RPC expects uuid text
   const uid = String(userId);
-  const points = action === "comment" ? 2 : 1;
+  const points = pointsFor(action);
 
   const supabase = requireSupabaseService();
 
-  // Try to write a ledger row (optional)
+  // Optional ledger row
   try {
     await supabase.from("karma_ledger").insert({
       user_id: uid,
       action,
       points,
-      meta: meta ?? null, // jsonb column recommended
+      meta: meta ?? null,
     });
   } catch {
     // ignore — ledger is optional
   }
 
-  // Try to bump the user's aggregate karma score via RPC (optional)
+  // Optional aggregate bump via RPC
   try {
     await supabase.rpc("karma_bump", {
       p_user_id: uid,
