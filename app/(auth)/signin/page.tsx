@@ -1,89 +1,70 @@
-// app/(auth)/signin/page.tsx
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
   const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const redirectTo =
+    (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin) + "/callback";
 
-  async function signInWithEmailPassword(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null); setNotice(null); setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    setLoading(false);
-    if (error) setError(error.message);
-    else window.location.href = "/";
-  }
-
-  async function sendMagicLink() {
-    setError(null); setNotice(null); setLoading(true);
+  async function sendMagic() {
+    setLoading(true);
+    setMsg(null);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` }
+      options: { emailRedirectTo: redirectTo },
     });
     setLoading(false);
-    if (error) setError(error.message);
-    else setNotice("Check your inbox for a sign-in link.");
+    setMsg(error ? error.message : "Check your email for a sign-in link.");
   }
 
   async function signInWithGoogle() {
-    setError(null); setNotice(null);
-    await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` }
+      options: { redirectTo },
     });
+    if (error) setMsg(error.message);
   }
 
   return (
-    <div className="container max-w-md py-12">
-      <h1 className="text-2xl font-bold mb-1">Welcome back</h1>
-      <p className="text-neutral-600 mb-6">Sign in to post comments and save stories.</p>
+    <div className="max-w-md mx-auto p-6 bg-white rounded-2xl shadow">
+      <label className="block mb-2 text-sm font-medium">Email</label>
+      <input
+        type="email"
+        className="w-full border rounded px-3 py-2 mb-4"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="you@example.com"
+      />
 
-      <div className="card p-6 space-y-4">
-        {error && <div className="rounded-md bg-red-50 text-red-700 px-3 py-2 text-sm">{error}</div>}
-        {notice && <div className="rounded-md bg-green-50 text-green-700 px-3 py-2 text-sm">{notice}</div>}
+      <button
+        type="button"
+        onClick={sendMagic}
+        disabled={!email || loading}
+        className="w-full rounded bg-emerald-700 text-white py-2 disabled:opacity-50"
+      >
+        {loading ? "Sending..." : "Email me a magic link"}
+      </button>
 
-        <form className="space-y-3" onSubmit={signInWithEmailPassword}>
-          <div>
-            <label className="block text-sm font-medium">Email</label>
-            <input
-              type="email" required value={email} onChange={(e)=>setEmail(e.target.value)}
-              className="mt-1 w-full rounded-xl border px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Password</label>
-            <input
-              type="password" required value={pass} onChange={(e)=>setPass(e.target.value)}
-              className="mt-1 w-full rounded-xl border px-3 py-2"
-            />
-          </div>
-          <button disabled={loading} className="btn-primary w-full justify-center">
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
+      <div className="my-4 text-center text-sm text-neutral-500">— or —</div>
 
-        <div className="text-center text-sm text-neutral-500">— or —</div>
+      <button
+        type="button"
+        onClick={signInWithGoogle}
+        className="w-full rounded border py-2"
+      >
+        Continue with Google
+      </button>
 
-        <button onClick={sendMagicLink} disabled={!email || loading} className="btn w-full justify-center border">
-          Email me a magic link
-        </button>
-
-        <button onClick={signInWithGoogle} className="btn w-full justify-center border">
-          Continue with Google
-        </button>
-
-        <p className="text-sm text-neutral-600">
-          Don’t have an account?{" "}
-          <Link href="/signup" className="underline underline-offset-2">Create one</Link>
-        </p>
-      </div>
+      {msg && <p className="mt-4 text-sm text-neutral-700">{msg}</p>}
     </div>
   );
 }
