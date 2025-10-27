@@ -2,7 +2,8 @@
 import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 type Payload = {
   kind: "pageview" | "like" | "save";
@@ -18,6 +19,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing kind" }, { status: 400 });
     }
 
+    const supabaseService = requireSupabaseService();
+
+    
     // Normalize fields
     const kind = body.kind;
     const path = (body.path ?? "").slice(0, 512) || null;
