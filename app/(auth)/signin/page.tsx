@@ -13,14 +13,12 @@ export default function SignInPage() {
   const [loading, setLoading] = useState<null | "pwd" | "magic">(null);
   const [message, setMessage] = useState<string | null>(q.get("error") || null);
 
-  // Compute the absolute callback URL once.
+  // Compute once; NEXT_PUBLIC_* gets inlined at build time (safe on client)
   const redirectTo = useMemo(() => {
     const site =
       process.env.NEXT_PUBLIC_SITE_URL ||
       (typeof window !== "undefined" ? window.location.origin : "");
-    // Ensure no trailing slash double-ups
-    const base = site.replace(/\/$/, "");
-    return `${base}/auth/callback`;
+    return `${site.replace(/\/$/, "")}/auth/callback`;
   }, []);
 
   const handlePassword = useCallback(
@@ -28,20 +26,22 @@ export default function SignInPage() {
       e.preventDefault();
       setMessage(null);
       setLoading("pwd");
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      setLoading(null);
-      if (error) {
-        setMessage(error.message);
-        return;
+      try {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
+        });
+        if (error) {
+          setMessage(error.message);
+          return;
+        }
+        router.replace("/");
+        router.refresh();
+      } catch (err: any) {
+        setMessage(err?.message || "Something went wrong. Please try again.");
+      } finally {
+        setLoading(null);
       }
-
-      router.replace("/");
-      router.refresh();
     },
     [email, password, router]
   );
@@ -51,20 +51,29 @@ export default function SignInPage() {
       e.preventDefault();
       setMessage(null);
 
-      if (!email) {
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedEmail) {
         setMessage("Please enter your email first.");
         return;
       }
 
       setLoading("magic");
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: redirectTo },
-      });
-      setLoading(null);
-
-      if (error) setMessage(error.message);
-      else setMessage("Check your email for a sign-in link.");
+      try {
+        const { error } = await supabase.auth.signInWithOtp({
+          email: normalizedEmail,
+          options: {
+            emailRedirectTo: redirectTo,
+            // optional: let users sign up via magic link if they don't exist
+            shouldCreateUser: true,
+          },
+        });
+        if (error) setMessage(error.message);
+        else setMessage("Check your email for a sign-in link.");
+      } catch (err: any) {
+        setMessage(err?.message || "Could not send magic link. Please try again.");
+      } finally {
+        setLoading(null);
+      }
     },
     [email, redirectTo]
   );
@@ -114,7 +123,7 @@ export default function SignInPage() {
 
         <button
           type="submit"
-          disabled={loading === "pwd"}
+          disabled={loading !== null} /* prevent double submits */
           className="w-full rounded-md bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
         >
           {loading === "pwd" ? "Signing in…" : "Sign in"}
@@ -130,7 +139,7 @@ export default function SignInPage() {
       <form onSubmit={handleMagicLink}>
         <button
           type="submit"
-          disabled={loading === "magic"}
+          disabled={loading !== null}
           className="w-full rounded-md border border-neutral-300 bg-white px-4 py-2 text-neutral-800 hover:bg-neutral-50 disabled:opacity-60"
           title={!email ? "Enter your email above first" : "Send me a magic link"}
         >
