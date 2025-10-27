@@ -1,6 +1,17 @@
-<nav className="flex items-center gap-6 text-sm">
-  <a href="/submit" className="hover:underline">Submit</a>
-  <a href="/about" className="hover:underline">About</a>
-  <a href="/contact" className="hover:underline">Contact</a>
-  {/* …Sign in / Avatar etc */}
-</nav>
+// components/Header.tsx (SERVER)
+import HeaderClient from "@/components/HeaderClient";
+import { supabaseServer } from "@/lib/supabase/server";
+
+export default async function Header() {
+  const supabase = supabaseServer();
+  const { data } = await supabase.auth.getUser();
+  const user = data.user;
+
+  return (
+    <HeaderClient
+      name={user?.user_metadata?.full_name ?? null}
+      email={user?.email ?? null}
+      avatar_url={(user?.user_metadata as any)?.avatar_url ?? null}
+    />
+  );
+}
