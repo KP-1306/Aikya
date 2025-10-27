@@ -1,6 +1,6 @@
 // app/api/good-acts/cert/upload/route.ts (example)
 import { NextResponse } from "next/server";
-import { supabaseService } from "@/lib/supabase/service"; // uses SERVICE_KEY
+import { requireSupabaseService } from "@/lib/supabase/service";
 
 export async function POST(req: Request) {
   try {
@@ -9,6 +9,7 @@ export async function POST(req: Request) {
       fileBase64: string;          // base64 data (no data: prefix), e.g. PNG/PDF
       contentType: string;         // "image/png" or "application/pdf"
     };
+const supabaseService = requireSupabaseService();
 
     const bytes = Buffer.from(fileBase64, "base64");
     const path = `acts/${actId}${contentType === "application/pdf" ? ".pdf" : ".png"}`;
