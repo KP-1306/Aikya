@@ -1,4 +1,5 @@
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 const REASONS: Record<string, number> = {
   page_streak: 5,
@@ -17,6 +18,8 @@ export async function awardKarma(userId: string, reason: keyof typeof REASONS, m
     user_id: userId, points, reason, meta
   });
   if (ledErr) throw new Error(ledErr.message);
+
+  const supabaseService = requireSupabaseService();
 
   // 2) bump profile totals
   const { data: prof } = await supabaseService
