@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 export async function POST(req: Request) {
   try {
@@ -8,6 +9,9 @@ export async function POST(req: Request) {
     const { data: { user } } = await sb.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const supabaseService = requireSupabaseService();
+
+    
     const { data: admin } = await sb.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
     if (!admin) return NextResponse.json({ error: "Admins only" }, { status: 403 });
 
