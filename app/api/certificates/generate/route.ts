@@ -3,9 +3,8 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import { trySupabaseService } from "@/lib/supabase/service";
 import { certificateSVG } from "@/lib/certificates/template";
-import { Resvg } from "@resvg/resvg-js";
 
-/** Prevent Next from trying to prerender/optimize this during build */
+// Prevent prerender/optimization; run on Node
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -14,7 +13,7 @@ export async function POST(req: Request) {
     const { actId } = (await req.json()) as { actId?: string };
     if (!actId) return NextResponse.json({ error: "Missing actId" }, { status: 400 });
 
-    // Must be signed in + admin (use anon server client)
+    // Auth (anon server client) + admin check
     const sb = supabaseServer();
     const { data: { user } } = await sb.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,10 +23,9 @@ export async function POST(req: Request) {
       .select("user_id")
       .eq("user_id", user.id)
       .maybeSingle();
-
     if (!admin) return NextResponse.json({ error: "Admins only" }, { status: 403 });
 
-    // Use service client only at runtime, and only if configured
+    // Try service client only at runtime
     const svc = trySupabaseService();
     if (!svc) {
       return NextResponse.json(
@@ -36,50 +34,60 @@ export async function POST(req: Request) {
       );
     }
 
-    // Get good act + actor name (adjust join as per your schema)
+    // Fetch act
     const { data: act, error: actErr } = await svc
       .from("good_acts")
       .select("id, person_name, created_at")
       .eq("id", actId)
       .single();
+    if (actErr || !act) return NextResponse.json({ error: "Act not found" }, { status: 404 });
 
-    if (actErr || !act) {
-      return NextResponse.json({ error: "Act not found" }, { status: 404 });
-    }
-
+    // Prepare SVG
     const svg = certificateSVG({
       actId: act.id,
       personName: act.person_name ?? "Friend of Aikya",
       dateISO: act.created_at ?? undefined,
     });
 
-    // Render to PNG buffer
-    const resvg = new Resvg(svg, { fitTo: { mode: "width", value: 1600 } });
-    const png = resvg.render().asPng();
+    // Try to render PNG with Resvg. If not available, fall back to SVG.
+    let fileBytes: Uint8Array;
+    let contentType: string;
+    let ext: "png" | "svg" = "png";
 
-    // Upload to certificates bucket
-    const path = `${act.id}/certificate-${Date.now()}.png`;
-    const { error: upErr } = await svc.storage.from("certificates").upload(path, png, {
-      contentType: "image/png",
-      upsert: true,
-    });
-    if (upErr) {
-      return NextResponse.json({ error: upErr.message }, { status: 400 });
+    try {
+      // Dynamic import at runtime – won’t break builds if the package is missing
+      const mod = await import("@resvg/resvg-js");
+      const Resvg = mod.Resvg ?? (mod as any).default;
+      const resvg = new Resvg(svg, { fitTo: { mode: "width", value: 1600 } });
+      fileBytes = resvg.render().asPng();
+      contentType = "image/png";
+      ext = "png";
+    } catch {
+      // Fallback: store SVG as-is
+      fileBytes = new TextEncoder().encode(svg);
+      contentType = "image/svg+xml";
+      ext = "svg";
     }
 
-    // Public URL
+    // Upload to certificates bucket
+    const path = `${act.id}/certificate-${Date.now()}.${ext}`;
+    const { error: upErr } = await svc.storage.from("certificates").upload(path, fileBytes, {
+      contentType,
+      upsert: true,
+    });
+    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 });
+
+    // Public URL + save back to the act
     const { data: pub } = svc.storage.from("certificates").getPublicUrl(path);
     const url = pub?.publicUrl;
 
-    // Save to act
     const { error: updErr } = await svc
       .from("good_acts")
       .update({ certificate_url: url })
       .eq("id", act.id);
-
     if (updErr) return NextResponse.json({ error: updErr.message }, { status: 400 });
 
-    return NextResponse.json({ ok: true, url });
+    return NextResponse.json({ ok: true, url, format: ext });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
