@@ -1,9 +1,11 @@
+// app/(auth)/callback/page.tsx
 "use client";
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
+// Browser client for Supabase
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -13,32 +15,55 @@ export default function CallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Supabase sends tokens in the URL hash: #access_token=...&refresh_token=...&error_description=...
-    const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
-    const sp = new URLSearchParams(hash);
+    let done = false;
 
-    const error = sp.get("error_description");
-    const access_token = sp.get("access_token");
-    const refresh_token = sp.get("refresh_token") ?? "";
+    const run = async () => {
+      // 0) If Supabase passed back an error, surface it and bounce to /signin
+      //    (Supabase uses either the hash or the query string)
+      const { location } = window;
+      const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+      const qs = new URLSearchParams(location.search);
+      const err =
+        hash.get("error_description") ||
+        hash.get("error") ||
+        qs.get("error_description") ||
+        qs.get("error");
+      if (err) {
+        router.replace(`/signin?error=${encodeURIComponent(err)}`);
+        return;
+      }
 
-    if (error) {
-      console.error("Auth error:", error);
-      router.replace(`/signin?error=${encodeURIComponent(error)}`);
-      return;
-    }
+      try {
+        // 1) Magic link / email OTP (implicit): tokens are in the URL hash.
+        //    This stores the session and removes the hash from the URL.
+        const { error } = await supabase.auth.getSessionFromUrl({
+          storeSession: true,
+        });
+        if (!error) {
+          done = true;
+        }
+      } catch {
+        // ignore — move on to OAuth exchange
+      }
 
-    if (access_token) {
-      // Store the session in Supabase (completes the magic-link / OAuth flow)
-      supabase.auth
-        .setSession({ access_token, refresh_token })
-        .then(() => router.replace("/"))
-        .catch(() => router.replace("/signin?error=auth_set_session_failed"));
-      return;
-    }
+      try {
+        // 2) OAuth (PKCE): ?code=... in the query string.
+        //    This exchanges the code for a session and cleans the URL.
+        const { error } = await supabase.auth.exchangeCodeForSession();
+        if (!error) {
+          done = true;
+        }
+      } catch {
+        // ignore — if neither flow matched, we'll just go home
+      }
 
-    // Nothing in URL hash – just go home
-    router.replace("/");
-  }, [router]);
+      // 3) Fall-through: go home (or change to your desired post-login page)
+      router.replace("/");
+    };
+
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <main className="container py-10">
