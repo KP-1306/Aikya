@@ -8,19 +8,6 @@ import { certificateSVG } from "@/lib/certificates/template";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Runtime-only loader so builds never require @resvg/resvg-js
-async function tryLoadResvg(): Promise<null | { Resvg: any }> {
-  try {
-    const mod = await import("@resvg/resvg-js");
-    // Some envs expose Resvg as default, others as named export
-    const Resvg = (mod as any).Resvg ?? (mod as any).default ?? null;
-    if (!Resvg) return null;
-    return { Resvg };
-  } catch {
-    return null;
-  }
-}
-
 export async function POST(req: Request) {
   try {
     const { actId } = (await req.json().catch(() => ({}))) as { actId?: string };
@@ -40,7 +27,7 @@ export async function POST(req: Request) {
       .maybeSingle();
     if (!admin) return NextResponse.json({ error: "Admins only" }, { status: 403 });
 
-    // Try service client only at runtime
+    // Service client (requires SUPABASE_SERVICE_ROLE_KEY on server)
     const svc = trySupabaseService();
     if (!svc) {
       return NextResponse.json(
@@ -57,35 +44,16 @@ export async function POST(req: Request) {
       .single();
     if (actErr || !act) return NextResponse.json({ error: "Act not found" }, { status: 404 });
 
-    // Prepare SVG
+    // Generate SVG (no PNG conversion here)
     const svg = certificateSVG({
       actId: act.id,
       personName: act.person_name ?? "Friend of Aikya",
       dateISO: act.created_at ?? undefined,
     });
 
-    // Try to render PNG with Resvg. If not available, fall back to SVG.
-    let fileBytes: Uint8Array;
-    let contentType: string;
-    let ext: "png" | "svg" = "png";
-
-    const resvgMod = await tryLoadResvg();
-    if (resvgMod?.Resvg) {
-      // Render to PNG (preferred)
-      // @ts-ignore - types may not be present if dep isn't installed locally
-      const renderer = new resvgMod.Resvg(svg, {
-        fitTo: { mode: "width", value: 1600 },
-        font: { loadSystemFonts: true },
-      });
-      fileBytes = renderer.render().asPng();
-      contentType = "image/png";
-      ext = "png";
-    } else {
-      // Fallback: store SVG as-is
-      fileBytes = new TextEncoder().encode(svg);
-      contentType = "image/svg+xml";
-      ext = "svg";
-    }
+    const fileBytes = new TextEncoder().encode(svg);
+    const contentType = "image/svg+xml";
+    const ext = "svg";
 
     // Upload to certificates bucket
     const path = `${act.id}/certificate-${Date.now()}.${ext}`;
