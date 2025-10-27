@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 type ProofIn = { kind: "photo"|"video"|"news_link"|"witness"|"follow_up"; url?: string; note?: string };
 type Body = {
@@ -14,6 +15,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json() as Body;
     if (!body.storyId) return NextResponse.json({ error: "Missing storyId" }, { status: 400 });
+
+    const supabaseService = requireSupabaseService();
 
     const sb = supabaseServer();
     const { data: { user } } = await sb.auth.getUser();
