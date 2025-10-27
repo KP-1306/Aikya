@@ -1,8 +1,11 @@
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 export async function rateLimit(key: string, max = 20, windowMs = 60_000) {
   const now = new Date();
   const winEnd = new Date(now.getTime() + windowMs).toISOString();
+
+  const supabaseService = requireSupabaseService();
 
   const { data: row } = await supabaseService
     .from("rate_limits").select("*").eq("key", key).maybeSingle();
