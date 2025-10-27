@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 function todayISO() {
   const t = new Date();
@@ -29,6 +30,8 @@ export async function POST(req: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const today = todayISO();
+
+    const supabaseService = requireSupabaseService();
 
     // profile
     const { data: prof0 } = await supabaseService
