@@ -1,39 +1,44 @@
 // lib/supabase/service.ts
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * IMPORTANT:
- * - This module MUST NOT throw at import time.
- * - Only create the client if both URL and SERVICE key are present.
+ * Lazy + build-safe service client:
+ * - Call with requireSupabaseService() inside handlers to get a Supabase client.
+ * - trySupabaseService() returns null if env is missing (for optional metadata routes).
+ * - Avoids initializing at import time to prevent build/prerender crashes.
  */
 
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || null;
-
-// Accept any of these env names for the service role key
-const SERVICE_KEY =
+const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || // if you ever misnamed it
-  null;
+  process.env.SUPABASE_SERVICE_KEY || // optional fallback if you used it before
+  "";
 
-let cached: SupabaseClient | null | undefined;
+// Single instance, created on demand
+let _client: SupabaseClient | null = null;
 
-function makeService(): SupabaseClient | null {
-  if (!URL || !SERVICE_KEY) return null;
-  return createClient(URL, SERVICE_KEY, {
-    auth: { persistSession: false },
+function create(): SupabaseClient {
+  return createClient(URL!, KEY!, {
+    auth: { autoRefreshToken: false, persistSession: false },
   });
 }
 
-/** Best-effort: returns null if env is missing. Never throws. */
-export function trySupabaseService(): SupabaseClient | null {
-  if (cached === undefined) cached = makeService();
-  return cached ?? null;
+/** Strict getter: throws if env is missing, meant for API/server handlers */
+export function requireSupabaseService(): SupabaseClient {
+  if (_client) return _client;
+  if (!URL || !KEY) {
+    throw new Error(
+      "Supabase service client unavailable. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+    );
+  }
+  _client = create();
+  return _client;
 }
 
-/** Strict: throw ONLY when you explicitly require the service client. */
-export function requireSupabaseService(): SupabaseClient {
-  const svc = trySupabaseService();
-  if (!svc) throw new Error("Supabase service client unavailable. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
-  return svc;
+/** Safe getter: returns null when env missing (useful in sitemap/RSS/etc.) */
+export function trySupabaseService(): SupabaseClient | null {
+  if (_client) return _client;
+  if (!URL || !KEY) return null;
+  _client = create();
+  return _client;
 }
