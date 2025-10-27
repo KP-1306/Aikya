@@ -3,8 +3,13 @@ import "../styles/globals.css";
 import type { Metadata } from "next";
 import { clsx } from "clsx";
 import Link from "next/link";
-import NavUser from "@/components/NavUser";        // server component – safe to use in layout
+import NavUser from "@/components/NavUser";        // server component – safe in layout
 import PageviewPing from "@/components/PageviewPing";
+
+// ⬇️ Force dynamic rendering globally (prevents build-time prerender errors)
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
 
 export const metadata: Metadata = {
   title: "Aikya — Good Around You",
