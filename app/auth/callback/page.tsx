@@ -4,45 +4,13 @@ import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
-/**
- * Handles BOTH Supabase redirect styles:
- *  - /auth/callback?code=...                     (code/PKCE)
- *  - /auth/callback#access_token=...&...         (hash-token)
- */
-export default function AuthCallbackPage() {
+export default function CallbackPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
   useEffect(() => {
     (async () => {
-      const next = sp.get("next") || "/";
-
-      // ?error / ?error_description in query
-      const queryErr = sp.get("error_description") || sp.get("error");
-      if (queryErr) {
-        router.replace(`/signin?error=${encodeURIComponent(queryErr)}`);
-        return;
-      }
-
-      // A) Code (PKCE) flow: /auth/callback?code=...
-      const code = sp.get("code");
-      if (code) {
-        try {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) {
-            router.replace(`/signin?error=${encodeURIComponent(error.message)}`);
-            return;
-          }
-          router.replace(next);
-          router.refresh();
-          return;
-        } catch (e) {
-          router.replace(`/signin?error=${encodeURIComponent("auth_exchange_failed")}`);
-          return;
-        }
-      }
-
-      // B) Hash-token (magic link) flow: /auth/callback#access_token=...
+      // 1) Prioritize MAGIC LINK HASH flow (email)
       const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
       const hsp = new URLSearchParams(hash);
       const access_token = hsp.get("access_token");
@@ -57,22 +25,50 @@ export default function AuthCallbackPage() {
       if (access_token) {
         try {
           const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-          if (error) {
-            router.replace(`/signin?error=${encodeURIComponent(error.message)}`);
-            return;
-          }
-          // Clean the hash, then continue
+          if (error) throw error;
+          // Clean the hash then land at home
           window.history.replaceState({}, "", window.location.pathname);
-          router.replace(next);
+          router.replace("/");
           router.refresh();
           return;
-        } catch (e) {
-          router.replace(`/signin?error=${encodeURIComponent("auth_set_session_failed")}`);
+        } catch (e: any) {
+          router.replace(`/signin?error=${encodeURIComponent(e?.message || "auth_set_session_failed")}`);
           return;
         }
       }
 
-      // C) Nothing usable → go home
+      // 2) PKCE “code” flow (OAuth) ONLY if we have a stored verifier
+      const code = sp.get("code");
+      const err = sp.get("error_description") || sp.get("error");
+
+      if (err) {
+        router.replace(`/signin?error=${encodeURIComponent(err)}`);
+        return;
+      }
+
+      // Supabase stores a pkce verifier key in web storage; check loosely
+      const hasPkceVerifier =
+        typeof window !== "undefined" &&
+        (localStorage.getItem("sb-pkce-code-verifier") ||
+          sessionStorage.getItem("sb-pkce-code-verifier") ||
+          Object.keys(localStorage).some((k) => k.includes("pkce") && k.includes("verifier")) ||
+          Object.keys(sessionStorage).some((k) => k.includes("pkce") && k.includes("verifier")));
+
+      if (code && hasPkceVerifier) {
+        try {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+          router.replace("/");
+          router.refresh();
+          return;
+        } catch (e: any) {
+          // If this fails due to missing verifier, send back to signin with a clean message
+          router.replace(`/signin?error=${encodeURIComponent("Sign-in link invalid or expired. Try again.")}`);
+          return;
+        }
+      }
+
+      // 3) Nothing usable → go home
       router.replace("/");
       router.refresh();
     })();
