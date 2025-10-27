@@ -1,53 +1,44 @@
 "use client";
+import { useState } from "react";
 
 type Props = {
   name?: string | null;
-  email?: string | null;
   src?: string | null;
-  size?: number; // px
+  size?: number;           // px
+  className?: string;
 };
 
-function initialsFrom(name?: string | null, email?: string | null) {
-  const n = (name || email || "").trim();
-  if (!n) return "🙂";
-  const parts = n.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
+export default function Avatar({ name, src, size = 28, className }: Props) {
+  const [errored, setErrored] = useState(false);
+  const initials =
+    (name || "")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map(s => s[0]?.toUpperCase() || "")
+      .join("") || "A";
 
-export default function Avatar({ name, email, src, size = 28 }: Props) {
-  const initials = initialsFrom(name, email);
-  const style = { width: size, height: size };
-
-  if (src) {
+  if (!src || errored) {
     return (
       <div
-        className="inline-flex items-center justify-center rounded-full bg-neutral-200 overflow-hidden"
-        style={style}
-        aria-label={name || email || "User"}
-        title={name || email || "User"}
+        className={`inline-flex items-center justify-center rounded-full bg-emerald-600 text-white text-xs font-semibold ${className || ""}`}
+        style={{ width: size, height: size }}
+        aria-label={name || "User"}
+        title={name || "User"}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={src}
-          alt={name || email || "User"}
-          width={size}
-          height={size}
-          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
-        />
-        <span className="text-[11px] font-medium text-neutral-700">{initials}</span>
+        {initials}
       </div>
     );
   }
 
   return (
-    <div
-      className="inline-flex select-none items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
-      style={style}
-      aria-label={name || email || "User"}
-      title={name || email || "User"}
-    >
-      <span className="text-[11px] font-medium">{initials}</span>
-    </div>
+    <img
+      src={src}
+      alt={name || "User"}
+      width={size}
+      height={size}
+      className={`rounded-full object-cover ${className || ""}`}
+      onError={() => setErrored(true)}
+    />
   );
 }
