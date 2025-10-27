@@ -4,7 +4,6 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { trySupabaseService } from "@/lib/supabase/service";
 import { certificateSVG } from "@/lib/certificates/template";
 
-// Prevent prerender/optimization; run on Node
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -27,7 +26,6 @@ export async function POST(req: Request) {
       .maybeSingle();
     if (!admin) return NextResponse.json({ error: "Admins only" }, { status: 403 });
 
-    // Service client (requires SUPABASE_SERVICE_ROLE_KEY on server)
     const svc = trySupabaseService();
     if (!svc) {
       return NextResponse.json(
@@ -44,20 +42,20 @@ export async function POST(req: Request) {
       .single();
     if (actErr || !act) return NextResponse.json({ error: "Act not found" }, { status: 404 });
 
-    // Generate SVG (no PNG conversion here)
+    // Generate SVG only (no resvg import anywhere)
     const svg = certificateSVG({
       actId: act.id,
       personName: act.person_name ?? "Friend of Aikya",
       dateISO: act.created_at ?? undefined,
     });
 
-    const fileBytes = new TextEncoder().encode(svg);
+    const bytes = new TextEncoder().encode(svg);
     const contentType = "image/svg+xml";
     const ext = "svg";
 
     // Upload to certificates bucket
     const path = `${act.id}/certificate-${Date.now()}.${ext}`;
-    const { error: upErr } = await svc.storage.from("certificates").upload(path, fileBytes, {
+    const { error: upErr } = await svc.storage.from("certificates").upload(path, bytes, {
       contentType,
       upsert: true,
     });
