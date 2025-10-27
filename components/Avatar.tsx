@@ -17,14 +17,13 @@ function initialsFrom(name?: string | null, email?: string | null) {
 
 export default function Avatar({ name, email, src, size = 28 }: Props) {
   const initials = initialsFrom(name, email);
-  const s = { width: size, height: size };
+  const style = { width: size, height: size };
 
   if (src) {
-    // Try image; if it breaks, CSS background will still show initials color
     return (
       <div
         className="inline-flex items-center justify-center rounded-full bg-neutral-200 overflow-hidden"
-        style={s}
+        style={style}
         aria-label={name || email || "User"}
         title={name || email || "User"}
       >
@@ -44,7 +43,7 @@ export default function Avatar({ name, email, src, size = 28 }: Props) {
   return (
     <div
       className="inline-flex select-none items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
-      style={s}
+      style={style}
       aria-label={name || email || "User"}
       title={name || email || "User"}
     >
