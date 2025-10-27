@@ -1,10 +1,22 @@
-// lib/supabase/client.ts
 "use client";
 
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-export function supabaseBrowser() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createBrowserClient(url, anon);
+/**
+ * Browser (anon) client used by client components.
+ * This file intentionally exports `supabase` as a named export
+ * because many components import { supabase } from "@/lib/supabase/client".
+ */
+
+const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+export const supabase: SupabaseClient = createClient(URL, KEY);
+
+// Optional helper if you ever need a fresh instance
+export function createBrowserClient(): SupabaseClient {
+  return createClient(URL, KEY);
 }
+
+// Default export for code that does `import supabase from ...`
+export default supabase;
