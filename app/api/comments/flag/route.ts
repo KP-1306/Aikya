@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { rateLimit } from "@/lib/rateLimit";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 const FLAG_THRESHOLD = 3; // auto-mark as "flagged" at this count
 
@@ -13,6 +14,8 @@ export async function POST(req: Request) {
     if (commentId == null) {
       return NextResponse.json({ error: "Missing commentId" }, { status: 400 });
     }
+
+    const supabaseService = requireSupabaseService();
 
     // comments.id is BIGINT → coerce to number for comparisons
     const idNum = typeof commentId === "string" ? Number(commentId) : commentId;
