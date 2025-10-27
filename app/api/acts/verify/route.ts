@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 type Body = {
   actId: string;
@@ -16,6 +17,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing actId/verdict" }, { status: 400 });
     }
 
+    const supabaseService = requireSupabaseService();
+
+    
     // Admin guard
     const sb = supabaseServer();
     const { data: { user } } = await sb.auth.getUser();
