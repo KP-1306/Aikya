@@ -13,11 +13,13 @@ export default function SignInPage() {
   const [loading, setLoading] = useState<null | "pwd" | "magic">(null);
   const [message, setMessage] = useState<string | null>(q.get("error") || null);
 
-  // IMPORTANT: must be /auth/callback
+  // Compute the absolute callback URL once.
   const redirectTo = useMemo(() => {
-    const base =
-      process.env.NEXT_PUBLIC_SITE_URL ??
+    const site =
+      process.env.NEXT_PUBLIC_SITE_URL ||
       (typeof window !== "undefined" ? window.location.origin : "");
+    // Ensure no trailing slash double-ups
+    const base = site.replace(/\/$/, "");
     return `${base}/auth/callback`;
   }, []);
 
@@ -27,7 +29,10 @@ export default function SignInPage() {
       setMessage(null);
       setLoading("pwd");
 
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
       setLoading(null);
       if (error) {
@@ -45,19 +50,21 @@ export default function SignInPage() {
     async (e: React.FormEvent) => {
       e.preventDefault();
       setMessage(null);
-      setLoading("magic");
 
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: `${base}/auth/callback` }
-      });
-
-      setLoading(null);
-      if (error) {
-        setMessage(error.message);
+      if (!email) {
+        setMessage("Please enter your email first.");
         return;
       }
-      setMessage("Check your email for a sign-in link.");
+
+      setLoading("magic");
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: redirectTo },
+      });
+      setLoading(null);
+
+      if (error) setMessage(error.message);
+      else setMessage("Check your email for a sign-in link.");
     },
     [email, redirectTo]
   );
@@ -74,8 +81,10 @@ export default function SignInPage() {
 
       <form onSubmit={handlePassword} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-1" htmlFor="email">Email</label>
-        <input
+          <label className="block text-sm font-medium mb-1" htmlFor="email">
+            Email
+          </label>
+          <input
             id="email"
             type="email"
             required
@@ -88,7 +97,9 @@ export default function SignInPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1" htmlFor="password">Password</label>
+          <label className="block text-sm font-medium mb-1" htmlFor="password">
+            Password
+          </label>
           <input
             id="password"
             type="password"
@@ -103,7 +114,7 @@ export default function SignInPage() {
 
         <button
           type="submit"
-          disabled={loading !== null}
+          disabled={loading === "pwd"}
           className="w-full rounded-md bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
         >
           {loading === "pwd" ? "Signing in…" : "Sign in"}
@@ -119,7 +130,7 @@ export default function SignInPage() {
       <form onSubmit={handleMagicLink}>
         <button
           type="submit"
-          disabled={loading !== null || !email}
+          disabled={loading === "magic"}
           className="w-full rounded-md border border-neutral-300 bg-white px-4 py-2 text-neutral-800 hover:bg-neutral-50 disabled:opacity-60"
           title={!email ? "Enter your email above first" : "Send me a magic link"}
         >
@@ -131,8 +142,8 @@ export default function SignInPage() {
         Don’t have an account? <a href="/signup" className="underline">Create one</a>
       </p>
 
-      <p className="mt-2 text-sm text-neutral-500">
-        <a className="underline" href="/">Continue as guest</a>
+      <p className="mt-2 text-sm">
+        <a href="/" className="underline">Continue as guest</a>
       </p>
     </main>
   );
