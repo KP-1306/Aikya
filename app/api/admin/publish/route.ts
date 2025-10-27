@@ -1,7 +1,8 @@
 // app/api/admin/publish/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 export async function POST(req: Request) {
   const { id, publish } = await req.json();
@@ -10,6 +11,9 @@ export async function POST(req: Request) {
   const sb = supabaseServer();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const supabaseService = requireSupabaseService();
+
 
   // 2) verify caller is admin
   const { data: admin } = await sb.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
