@@ -1,7 +1,8 @@
 // app/api/admin/stories/delete/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 export const runtime = "nodejs"; // ensure Node runtime
 
@@ -9,6 +10,8 @@ export async function POST(req: Request) {
   try {
     const { id } = (await req.json()) as { id?: string };
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+    const supabaseService = requireSupabaseService();
 
     // Auth + admin check
     const sb = supabaseServer();
