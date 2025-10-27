@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 export async function POST(req: Request) {
   try {
@@ -14,6 +15,9 @@ export async function POST(req: Request) {
     const { data: admin } = await sb.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
     if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+    const supabaseService = requireSupabaseService();
+
+    
     // read current status
     const { data: row, error: getErr } = await supabaseService
       .from("support_offers")
