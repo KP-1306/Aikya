@@ -2,7 +2,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 import { rateLimit } from "@/lib/rateLimit";
 
 function sanitizeBody(s: string) {
@@ -16,6 +17,7 @@ export async function POST(req: Request) {
     if (!storyId || !body) {
       return NextResponse.json({ error: "Missing storyId/body" }, { status: 400 });
     }
+const supabaseService = requireSupabaseService();
 
     // 🔒 Per-anon rate limit (10 comments per minute)
     const aid = cookies().get("aid")?.value || "anon";
