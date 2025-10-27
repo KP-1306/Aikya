@@ -2,7 +2,8 @@
 import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 import { awardKarma } from "@/lib/karma/server"; // ✅ correct alias
 
 export const runtime = "nodejs";
@@ -13,6 +14,8 @@ export async function POST(req: Request) {
     if (!storyId) {
       return NextResponse.json({ error: "Missing storyId" }, { status: 400 });
     }
+
+    const supabaseService = requireSupabaseService();
 
     // Auth
     const sb = supabaseServer();
