@@ -8,14 +8,29 @@ import { certificateSVG } from "@/lib/certificates/template";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+// Runtime-only loader so builds never require @resvg/resvg-js
+async function tryLoadResvg(): Promise<null | { Resvg: any }> {
+  try {
+    const mod = await import("@resvg/resvg-js");
+    // Some envs expose Resvg as default, others as named export
+    const Resvg = (mod as any).Resvg ?? (mod as any).default ?? null;
+    if (!Resvg) return null;
+    return { Resvg };
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   try {
-    const { actId } = (await req.json()) as { actId?: string };
+    const { actId } = (await req.json().catch(() => ({}))) as { actId?: string };
     if (!actId) return NextResponse.json({ error: "Missing actId" }, { status: 400 });
 
     // Auth (anon server client) + admin check
     const sb = supabaseServer();
-    const { data: { user } } = await sb.auth.getUser();
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { data: admin } = await sb
@@ -54,15 +69,18 @@ export async function POST(req: Request) {
     let contentType: string;
     let ext: "png" | "svg" = "png";
 
-    try {
-      // Dynamic import at runtime – won’t break builds if the package is missing
-      const mod = await import("@resvg/resvg-js");
-      const Resvg = mod.Resvg ?? (mod as any).default;
-      const resvg = new Resvg(svg, { fitTo: { mode: "width", value: 1600 } });
-      fileBytes = resvg.render().asPng();
+    const resvgMod = await tryLoadResvg();
+    if (resvgMod?.Resvg) {
+      // Render to PNG (preferred)
+      // @ts-ignore - types may not be present if dep isn't installed locally
+      const renderer = new resvgMod.Resvg(svg, {
+        fitTo: { mode: "width", value: 1600 },
+        font: { loadSystemFonts: true },
+      });
+      fileBytes = renderer.render().asPng();
       contentType = "image/png";
       ext = "png";
-    } catch {
+    } else {
       // Fallback: store SVG as-is
       fileBytes = new TextEncoder().encode(svg);
       contentType = "image/svg+xml";
@@ -79,7 +97,7 @@ export async function POST(req: Request) {
 
     // Public URL + save back to the act
     const { data: pub } = svc.storage.from("certificates").getPublicUrl(path);
-    const url = pub?.publicUrl;
+    const url = pub?.publicUrl ?? null;
 
     const { error: updErr } = await svc
       .from("good_acts")
