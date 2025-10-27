@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 
 export async function POST(req: Request) {
   try {
     const { id, op } = await req.json() as { id?: string; op?: "approve"|"hide"|"ban" };
     if (!id || !op) return NextResponse.json({ error: "Missing id/op" }, { status: 400 });
+
+    const supabaseService = requireSupabaseService();
 
     // auth + admin
     const sb = supabaseServer();
