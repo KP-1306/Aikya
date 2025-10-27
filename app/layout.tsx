@@ -6,6 +6,9 @@ import Link from "next/link";
 import NavUser from "@/components/NavUser";        // server component – safe in layout
 import PageviewPing from "@/components/PageviewPing";
 
+import Header from "@/components/Header";
+
+
 // ⬇️ Force dynamic rendering globally (prevents build-time prerender errors)
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
