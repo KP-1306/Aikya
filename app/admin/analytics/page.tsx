@@ -1,7 +1,7 @@
 // app/admin/analytics/page.tsx
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { trySupabaseService } from "@/lib/supabase/service";
 
 type EventRow = {
   kind: "pageview" | "like" | "save";
@@ -14,7 +14,7 @@ type EventRow = {
 
 type TopRow = { key: string; count: number };
 
-function aggregate<T extends string | null>(items: T[]) {
+function aggregate<T extends string | null>(items: T[]): TopRow[] {
   const map = new Map<string, number>();
   for (const it of items) {
     const key = (it ?? "").trim();
@@ -26,10 +26,17 @@ function aggregate<T extends string | null>(items: T[]) {
     .sort((a, b) => b.count - a.count);
 }
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+const DAYS = 30;
+
 export default async function AdminAnalyticsPage() {
-  // ── Guard: must be signed in and an admin
+  // ── Auth guard
   const sb = supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
   if (!user) redirect("/signin");
 
   const { data: admin } = await sb
@@ -37,12 +44,27 @@ export default async function AdminAnalyticsPage() {
     .select("user_id")
     .eq("user_id", user.id)
     .maybeSingle();
-  if (!admin) redirect("/");
+  if (!admin) notFound();
 
-  // ── Load recent analytics events (last 30 days; adjust as you wish)
-  const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  // ── Service client (required to read analytics_events)
+  const svc = trySupabaseService(); // returns Supabase client or null
+  if (!svc) {
+    return (
+      <div className="container py-8">
+        <h1 className="text-2xl font-bold">Admin · Analytics</h1>
+        <p className="mt-4 text-sm text-neutral-600">
+          Server is not configured with <code>SUPABASE_SERVICE_ROLE_KEY</code>. Add it to enable this
+          page.
+        </p>
+      </div>
+    );
+  }
 
-  const { data: rows, error } = await supabaseService
+  // ── Load recent analytics events (last 30 days)
+  const sinceIso = new Date(Date.now() - DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  // ✅ IMPORTANT: call .from on the *client* (svc), not the function itself
+  const { data: rows, error } = await svc
     .from("analytics_events")
     .select("kind, path, story_id, created_at, ua, referrer")
     .gte("created_at", sinceIso)
@@ -51,7 +73,7 @@ export default async function AdminAnalyticsPage() {
   if (error) {
     return (
       <div className="container py-8">
-        <h1 className="text-2xl font-bold">Analytics</h1>
+        <h1 className="text-2xl font-bold">Admin · Analytics</h1>
         <p className="text-red-600 mt-4">Error: {error.message}</p>
       </div>
     );
@@ -75,7 +97,7 @@ export default async function AdminAnalyticsPage() {
         <div>
           <h1 className="text-2xl font-bold">Admin · Analytics</h1>
           <p className="text-sm text-neutral-600">
-            Aggregated from the last 30 days of analytics_events.
+            Aggregated from the last {DAYS} days of <code>analytics_events</code>.
           </p>
         </div>
       </header>
