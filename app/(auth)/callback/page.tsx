@@ -1,58 +1,48 @@
-// app/(auth)/callback/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 
-export default function AuthCallbackPage() {
-  const [msg, setMsg] = useState("Signing you in…");
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+export default function CallbackPage() {
+  const router = useRouter();
 
   useEffect(() => {
-    let canceled = false;
+    // Supabase sends tokens in the URL hash: #access_token=...&refresh_token=...&error_description=...
+    const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+    const sp = new URLSearchParams(hash);
 
-    async function run() {
-      try {
-        // 1) Exchange OAuth/magic-link code for a session
-        const { error } = await supabase.auth.exchangeCodeForSession(
-          window.location.href
-        );
-        if (error) throw error;
+    const error = sp.get("error_description");
+    const access_token = sp.get("access_token");
+    const refresh_token = sp.get("refresh_token") ?? "";
 
-        // 2) Ensure a profile row exists for this user
-        const {
-          data: { user },
-          error: getUserErr,
-        } = await supabase.auth.getUser();
-        if (getUserErr) throw getUserErr;
-
-        if (user) {
-          await supabase
-            .from("profiles")
-            .upsert({ id: user.id }, { onConflict: "id" });
-        }
-
-        // 3) Redirect to home (or wherever)
-        if (!canceled) window.location.replace("/");
-      } catch (e: any) {
-        if (!canceled) {
-          setMsg(
-            e?.message || "Something went wrong. You can close this window."
-          );
-        }
-      }
+    if (error) {
+      console.error("Auth error:", error);
+      router.replace(`/signin?error=${encodeURIComponent(error)}`);
+      return;
     }
 
-    run();
-    return () => {
-      canceled = true;
-    };
-  }, []);
+    if (access_token) {
+      // Store the session in Supabase (completes the magic-link / OAuth flow)
+      supabase.auth
+        .setSession({ access_token, refresh_token })
+        .then(() => router.replace("/"))
+        .catch(() => router.replace("/signin?error=auth_set_session_failed"));
+      return;
+    }
+
+    // Nothing in URL hash – just go home
+    router.replace("/");
+  }, [router]);
 
   return (
-    <div className="container max-w-md py-24 text-center">
-      <div className="card p-8">
-        <div className="animate-pulse text-sm text-neutral-600">{msg}</div>
-      </div>
-    </div>
+    <main className="container py-10">
+      <p>Signing you in…</p>
+    </main>
   );
 }
