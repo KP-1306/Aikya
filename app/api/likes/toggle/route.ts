@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { rateLimit } from "@/lib/rateLimit";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 import { awardKarma } from "@/lib/karma";
 
 export async function POST(req: Request) {
@@ -12,6 +13,8 @@ export async function POST(req: Request) {
     if (!storyId) {
       return NextResponse.json({ error: "Missing storyId" }, { status: 400 });
     }
+
+    const supabaseService = requireSupabaseService();
 
     // 🔒 Rate limit: 60 like toggles per minute per anon id
     const aid = cookies().get("aid")?.value || "anon";
