@@ -1,5 +1,5 @@
 // lib/karma/server.ts
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
 
 /**
  * Best-effort: bump user karma and (optionally) log a ledger row.
@@ -14,6 +14,8 @@ export async function awardKarma(
   meta?: Record<string, unknown>
 ) {
   const points = action === "comment" ? 2 : 1;
+
+  const supabaseService = requireSupabaseService();
 
   // Try to write a ledger row (optional table).
   try {
