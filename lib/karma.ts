@@ -1,56 +1,46 @@
 // lib/karma.ts
 import { requireSupabaseService } from "@/lib/supabase/service";
 
-export type KarmaMeta = Record<string, unknown>;
+export type KarmaAction = "comment" | "save" | "like" | "checkin";
 
 /**
- * Award karma to a user and log it to the ledger.
- * Safe to call from API routes. Creates the Supabase service client lazily.
+ * Best-effort: bump user karma and (optionally) log a ledger row.
+ * Never throws — errors are swallowed so your primary request never fails.
+ *
+ * Tables / RPC (optional but recommended):
+ *   - karma_ledger(user_id uuid, action text, points int, meta jsonb, created_at timestamptz)
+ *   - RPC: karma_bump(p_user_id uuid, p_points int)
  */
 export async function awardKarma(
-  userId: string,
-  points: number,
-  reason: string,
-  meta?: KarmaMeta
+  userId: string | number,             // <-- accept UUID string (or numeric id)
+  action: KarmaAction,
+  meta?: Record<string, unknown>
 ): Promise<void> {
-  const supabaseService = requireSupabaseService();
+  // Coerce to string because RPC expects uuid text
+  const uid = String(userId);
+  const points = action === "comment" ? 2 : 1;
 
-  // 1) ledger entry
-  const { error: ledErr } = await supabaseService
-    .from("karma_ledger")
-    .insert({
-      user_id: userId,
+  const supabase = requireSupabaseService();
+
+  // Try to write a ledger row (optional)
+  try {
+    await supabase.from("karma_ledger").insert({
+      user_id: uid,
+      action,
       points,
-      reason,
-      meta,
+      meta: meta ?? null, // jsonb column recommended
     });
+  } catch {
+    // ignore — ledger is optional
+  }
 
-  if (ledErr) throw new Error(ledErr.message);
-
-  // 2) upsert/accumulate total in profiles
-  //    (keeps a quick tally alongside the immutable ledger)
-  const { data: existing, error: fetchErr } = await supabaseService
-    .from("karma_profiles")
-    .select("id, karma")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (fetchErr) throw new Error(fetchErr.message);
-
-  if (!existing) {
-    const { error: insertErr } = await supabaseService
-      .from("karma_profiles")
-      .insert({ user_id: userId, karma: points });
-
-    if (insertErr) throw new Error(insertErr.message);
-  } else {
-    const newTotal = (existing.karma ?? 0) + points;
-
-    const { error: updateErr } = await supabaseService
-      .from("karma_profiles")
-      .update({ karma: newTotal })
-      .eq("id", existing.id);
-
-    if (updateErr) throw new Error(updateErr.message);
+  // Try to bump the user's aggregate karma score via RPC (optional)
+  try {
+    await supabase.rpc("karma_bump", {
+      p_user_id: uid,
+      p_points: points,
+    });
+  } catch {
+    // ignore — best-effort bookkeeping
   }
 }
