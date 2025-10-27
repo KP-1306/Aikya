@@ -13,11 +13,12 @@ export default function SignInPage() {
   const [loading, setLoading] = useState<null | "pwd" | "magic">(null);
   const [message, setMessage] = useState<string | null>(q.get("error") || null);
 
+  // IMPORTANT: must be /auth/callback
   const redirectTo = useMemo(() => {
     const base =
       process.env.NEXT_PUBLIC_SITE_URL ??
       (typeof window !== "undefined" ? window.location.origin : "");
-    return `${base}/callback`;
+    return `${base}/auth/callback`;
   }, []);
 
   const handlePassword = useCallback(
@@ -26,10 +27,7 @@ export default function SignInPage() {
       setMessage(null);
       setLoading("pwd");
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
 
       setLoading(null);
       if (error) {
@@ -37,7 +35,6 @@ export default function SignInPage() {
         return;
       }
 
-      // Ensure server components see the cookie right away.
       router.replace("/");
       router.refresh();
     },
@@ -77,10 +74,8 @@ export default function SignInPage() {
 
       <form onSubmit={handlePassword} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-1" htmlFor="email">
-            Email
-          </label>
-          <input
+          <label className="block text-sm font-medium mb-1" htmlFor="email">Email</label>
+        <input
             id="email"
             type="email"
             required
@@ -93,9 +88,7 @@ export default function SignInPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1" htmlFor="password">
-            Password
-          </label>
+          <label className="block text-sm font-medium mb-1" htmlFor="password">Password</label>
           <input
             id="password"
             type="password"
@@ -126,7 +119,7 @@ export default function SignInPage() {
       <form onSubmit={handleMagicLink}>
         <button
           type="submit"
-          disabled={loading !== null}
+          disabled={loading !== null || !email}
           className="w-full rounded-md border border-neutral-300 bg-white px-4 py-2 text-neutral-800 hover:bg-neutral-50 disabled:opacity-60"
           title={!email ? "Enter your email above first" : "Send me a magic link"}
         >
@@ -136,6 +129,10 @@ export default function SignInPage() {
 
       <p className="mt-6 text-sm text-neutral-600">
         Don’t have an account? <a href="/signup" className="underline">Create one</a>
+      </p>
+
+      <p className="mt-2 text-sm text-neutral-500">
+        <a className="underline" href="/">Continue as guest</a>
       </p>
     </main>
   );
