@@ -1,85 +1,123 @@
+// components/HeaderClient.tsx
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import Avatar from "@/components/Avatar";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
-type Props = {
-  name?: string | null;
-  email?: string | null;
-  avatar_url?: string | null;
+type HeaderClientProps = {
+  name: string | null;
+  email: string | null;
+  avatar_url: string | null;
 };
 
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  const pathname = usePathname();
-  const active = pathname === href;
+// Util: get initials from name or fall back to email local-part
+function getInitials(name?: string | null, fallback?: string | null) {
+  const base = (name && name.trim()) || (fallback ? fallback.split("@")[0] : "");
+  if (!base) return "A";
+  const parts = base.split(/\s+/).filter(Boolean);
+  const init =
+    (parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[1]?.[0] ?? "" : "");
+  return init.toUpperCase() || "A";
+}
+
+// Simple avatar with image + initials fallback
+function Avatar({
+  name,
+  email,
+  src,
+  size = 32,
+}: {
+  name?: string | null;
+  email?: string | null;
+  src?: string | null;
+  size?: number;
+}) {
+  const [showImg, setShowImg] = useState(Boolean(src));
+  const initials = getInitials(name, email);
+  const px = `${size}px`;
+
   return (
-    <Link
-      href={href}
-      className={`hover:underline ${active ? "text-emerald-700 font-medium" : ""}`}
+    <div
+      className="relative inline-flex select-none items-center justify-center overflow-hidden rounded-full bg-emerald-600 text-white text-xs font-semibold"
+      style={{ width: px, height: px }}
+      aria-label={name || email || "User"}
     >
-      {children}
-    </Link>
+      {showImg && src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={name || email || "Avatar"}
+          className="h-full w-full rounded-full object-cover"
+          onError={() => setShowImg(false)}
+        />
+      ) : (
+        <span>{initials}</span>
+      )}
+    </div>
   );
 }
 
-export default function HeaderClient({ name, email, avatar_url }: Props) {
+export default function HeaderClient({
+  name,
+  email,
+  avatar_url,
+}: HeaderClientProps) {
   const router = useRouter();
-  const signedIn = !!email;
+  const [busy, setBusy] = useState(false);
 
   async function onSignOut() {
-    await supabase.auth.signOut();
-    router.replace("/");
-    router.refresh();
+    try {
+      setBusy(true);
+      await supabase.auth.signOut();
+      router.replace("/");
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
 
+  const displayName = name || email || "Guest";
+
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
-      <div className="container mx-auto flex h-14 items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 font-semibold">
-          <span className="text-emerald-600">●</span> Aikya <span className="text-neutral-500">News</span>
+    <header className="container mx-auto flex items-center justify-between py-4">
+      <Link href="/" className="text-base font-semibold">
+        Aikya
+      </Link>
+
+      <nav className="flex items-center gap-4 text-sm">
+        <Link href="/submit" className="hover:underline">
+          Submit
+        </Link>
+        <Link href="/about" className="hover:underline">
+          About
+        </Link>
+        <Link href="/contact" className="hover:underline">
+          Contact
         </Link>
 
-        <nav className="hidden md:flex items-center gap-6 text-sm">
-          <NavLink href="/submit">Submit</NavLink>
-          <NavLink href="/about">About</NavLink>
-          <NavLink href="/contact">Contact</NavLink>
-        </nav>
-
-        <div className="flex items-center gap-3">
-          {signedIn ? (
-            <>
-              <span className="hidden sm:block text-sm truncate max-w-[160px]">
-                {name || email}
-              </span>
-              <Avatar name={name || undefined} email={email || undefined} src={avatar_url || undefined} />
-              <button
-                onClick={onSignOut}
-                className="rounded-md border px-3 py-1 text-sm hover:bg-neutral-50"
-              >
-                Sign out
-              </button>
-            </>
-          ) : (
-            <Link
-              href="/signin"
-              className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm text-white"
+        {email ? (
+          <div className="flex items-center gap-3">
+            <span className="hidden sm:inline text-neutral-700">{displayName}</span>
+            <Avatar name={name} email={email} src={avatar_url} />
+            <button
+              onClick={onSignOut}
+              disabled={busy}
+              className="rounded-md border px-3 py-1 hover:bg-neutral-50 disabled:opacity-60"
             >
-              Sign in
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile nav */}
-      <div className="md:hidden border-t">
-        <div className="container mx-auto flex items-center gap-6 px-4 py-2 text-sm">
-          <NavLink href="/submit">Submit</NavLink>
-          <NavLink href="/about">About</NavLink>
-          <NavLink href="/contact">Contact</NavLink>
-        </div>
-      </div>
+              {busy ? "Signing out…" : "Sign out"}
+            </button>
+          </div>
+        ) : (
+          <Link
+            href="/signin"
+            className="rounded-md bg-emerald-600 px-3 py-1 text-white"
+          >
+            Sign in
+          </Link>
+        )}
+      </nav>
     </header>
   );
 }
