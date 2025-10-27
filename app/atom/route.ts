@@ -1,43 +1,71 @@
+// app/atom/route.ts
 import { NextResponse } from "next/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { trySupabaseService } from "@/lib/supabase/service";
 
-export const revalidate = 60;
+// Build-time safe: always render dynamically on Node
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
+
+const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://aikyanow.netlify.app";
 
 export async function GET() {
-  const base = "https://aikyanow.netlify.app";
+  const svc = trySupabaseService();
   const updated = new Date().toISOString();
 
-  const { data } = await supabaseService
+  // If service client isn't available (e.g., missing key at build), return an empty but valid feed
+  if (!svc) {
+    return atomResponse(atomXml("", updated));
+  }
+
+  const { data } = await svc
     .from("stories")
     .select("slug, title, dek, published_at")
     .eq("is_published", true)
     .order("published_at", { ascending: false })
     .limit(50);
 
-  const entries = (data ?? []).map((s: any) => `
-    <entry>
-      <title>${escapeXml(s.title)}</title>
-      <link href="${base}/story/${s.slug}"/>
-      <id>${base}/story/${s.slug}</id>
-      <updated>${new Date(s.published_at ?? Date.now()).toISOString()}</updated>
-      <summary>${escapeXml(s.dek || "")}</summary>
-    </entry>
-  `).join("");
+  const entries =
+    (data ?? [])
+      .map((s: any) => {
+        const url = `${BASE}/story/${s.slug}`;
+        const title = escapeXml(s.title ?? "");
+        const summary = escapeXml(s.dek ?? "");
+        const upd = new Date(s.published_at ?? Date.now()).toISOString();
+        return `
+  <entry>
+    <title>${title}</title>
+    <link href="${url}"/>
+    <id>${url}</id>
+    <updated>${upd}</updated>
+    <summary>${summary}</summary>
+  </entry>`;
+      })
+      .join("\n") || "";
 
-  const xml = `<?xml version="1.0" encoding="utf-8"?>
-  <feed xmlns="http://www.w3.org/2005/Atom">
-    <title>Aikya — Good Around You</title>
-    <link href="${base}/atom"/>
-    <updated>${updated}</updated>
-    <id>${base}/</id>
-    ${entries}
-  </feed>`;
+  return atomResponse(atomXml(entries, updated));
+}
 
+function atomXml(entries: string, updated: string) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Aikya — Good Around You</title>
+  <link href="${BASE}/atom" rel="self"/>
+  <link href="${BASE}"/>
+  <id>${BASE}/</id>
+  <updated>${updated}</updated>
+${entries}
+</feed>`;
+}
+
+function atomResponse(xml: string) {
   return new NextResponse(xml, {
-    headers: { "Content-Type": "application/atom+xml; charset=utf-8" },
+    headers: { "content-type": "application/atom+xml; charset=utf-8" },
   });
 }
 
 function escapeXml(s: string) {
-  return s.replace(/[<>&'"]/g, (c) => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;", "'":"&apos;", '"':"&quot;" }[c]!));
+  return s.replace(/[<>&'"]/g, (c) =>
+    ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" } as const)[c]!
+  );
 }
