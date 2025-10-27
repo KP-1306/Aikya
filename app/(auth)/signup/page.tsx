@@ -1,97 +1,142 @@
+// app/(auth)/signup/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 
 export default function SignUpPage() {
   const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState<null | "password" | "magic">(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
-  async function createAccount(e: React.FormEvent) {
+  // Where Supabase will redirect after email confirmation / magic link
+  const redirectTo = useMemo(() => {
+    const base =
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      (typeof window !== "undefined" ? window.location.origin : "");
+    return `${base}/callback`;
+  }, []);
+
+  async function onPasswordSignup(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    setNotice(null);
-    setLoading(true);
+    setErr(null);
+    setMsg(null);
+    setLoading("password");
 
     const { error } = await supabase.auth.signUp({
       email,
-      password: pass,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      password,
+      options: { emailRedirectTo: redirectTo },
     });
 
-    setLoading(false);
-    if (error) setError(error.message);
-    else setNotice("Check your inbox to confirm your email.");
+    setLoading(null);
+    if (error) setErr(error.message);
+    else setMsg("Account created. Check your email to confirm your address.");
+  }
+
+  async function onMagicLink(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setMsg(null);
+    setLoading("magic");
+
+    // This will create the user after they click the link
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: redirectTo },
+    });
+
+    setLoading(null);
+    if (error) setErr(error.message);
+    else setMsg("Magic link sent. Check your inbox to finish signing up.");
   }
 
   return (
-    <div className="container max-w-md py-12">
+    <main className="container max-w-md mx-auto py-12">
       <h1 className="text-2xl font-bold mb-1">Create your account</h1>
       <p className="text-neutral-600 mb-6">Sign up to comment and save stories.</p>
 
-      <div className="card p-6 space-y-4">
-        {error && (
-          <div className="rounded bg-red-50 text-red-700 px-3 py-2 text-sm">
-            {error}
-          </div>
-        )}
-        {notice && (
-          <div className="rounded bg-green-50 text-green-700 px-3 py-2 text-sm">
-            {notice}
-          </div>
-        )}
+      {err && (
+        <div className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+          {err}
+        </div>
+      )}
+      {msg && (
+        <div className="mb-4 rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+          {msg}
+        </div>
+      )}
 
-        <form className="space-y-3" onSubmit={createAccount}>
-          <div>
-            <label className="block text-sm font-medium">Email</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-xl border px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Password</label>
-            <input
-              type="password"
-              required
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
-              className="mt-1 w-full rounded-xl border px-3 py-2"
-            />
-          </div>
-          <button disabled={loading} className="btn-primary w-full justify-center">
-            {loading ? "Creating…" : "Create account"}
-          </button>
-        </form>
+      {/* Email + Password sign up */}
+      <form onSubmit={onPasswordSignup} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium" htmlFor="email">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
+        </div>
 
-        <hr className="my-2" />
+        <div>
+          <label className="block text-sm font-medium" htmlFor="password">
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            placeholder="Create a password"
+            autoComplete="new-password"
+          />
+        </div>
 
         <button
-          onClick={() =>
-            supabase.auth.signInWithOAuth({
-              provider: "google",
-              options: { redirectTo: `${window.location.origin}/auth/callback` },
-            })
-          }
-          className="btn w-full justify-center border"
+          type="submit"
+          disabled={loading !== null}
+          className="w-full rounded-md bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
         >
-          Continue with Google
+          {loading === "password" ? "Creating…" : "Create account"}
         </button>
+      </form>
 
-        <p className="text-sm text-neutral-600">
-          Already have an account?{" "}
-          <Link href="/signin" className="underline underline-offset-2">
-            Sign in
-          </Link>
-        </p>
+      <div className="my-6 flex items-center gap-3 text-sm text-neutral-500">
+        <span className="h-px flex-1 bg-neutral-200" />
+        or
+        <span className="h-px flex-1 bg-neutral-200" />
       </div>
-    </div>
+
+      {/* Magic link sign up */}
+      <form onSubmit={onMagicLink}>
+        <button
+          type="submit"
+          disabled={!email || loading !== null}
+          className="w-full rounded-md border border-neutral-300 bg-white px-4 py-2 text-neutral-800 hover:bg-neutral-50 disabled:opacity-60"
+          title={!email ? "Enter your email above first" : "Send me a magic link"}
+        >
+          {loading === "magic" ? "Sending link…" : "Email me a magic link"}
+        </button>
+      </form>
+
+      <p className="mt-6 text-sm text-neutral-600">
+        Already have an account?{" "}
+        <Link href="/signin" className="underline">
+          Sign in
+        </Link>
+      </p>
+    </main>
   );
 }
