@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -9,62 +10,146 @@ const supabase = createClient(
 );
 
 export default function SignInPage() {
+  const router = useRouter();
+  const q = useSearchParams();
+
   const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const redirectTo =
-    (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin) + "/callback";
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState<null | "pwd" | "magic" | "google">(null);
+  const [message, setMessage] = useState<string | null>(q.get("error") || null);
 
-  async function sendMagic() {
-    setLoading(true);
-    setMsg(null);
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: redirectTo },
-    });
-    setLoading(false);
-    setMsg(error ? error.message : "Check your email for a sign-in link.");
-  }
+  // Where Supabase should send users back after auth
+  const redirectTo = useMemo(() => {
+    const base =
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      (typeof window !== "undefined" ? window.location.origin : "");
+    return `${base}/callback`;
+  }, []);
 
-  async function signInWithGoogle() {
+  const handlePassword = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      setMessage(null);
+      setLoading("pwd");
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      setLoading(null);
+      if (error) return setMessage(error.message);
+      router.replace("/"); // signed in
+    },
+    [email, password, router]
+  );
+
+  const handleMagicLink = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      setMessage(null);
+      setLoading("magic");
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: redirectTo },
+      });
+      setLoading(null);
+      if (error) return setMessage(error.message);
+      setMessage("Check your email for a sign-in link.");
+    },
+    [email, redirectTo]
+  );
+
+  const handleGoogle = useCallback(async () => {
+    setMessage(null);
+    setLoading("google");
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
     });
-    if (error) setMsg(error.message);
-  }
+    // If OAuth opens a new window, this code may not continue here.
+    if (error) {
+      setLoading(null);
+      setMessage(error.message);
+    }
+  }, [redirectTo]);
 
   return (
-    <div className="max-w-md mx-auto p-6 bg-white rounded-2xl shadow">
-      <label className="block mb-2 text-sm font-medium">Email</label>
-      <input
-        type="email"
-        className="w-full border rounded px-3 py-2 mb-4"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="you@example.com"
-      />
+    <main className="container max-w-md mx-auto py-10">
+      <h1 className="text-2xl font-semibold mb-6">Welcome back</h1>
 
+      {message && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          {message}
+        </div>
+      )}
+
+      <form onSubmit={handlePassword} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1" htmlFor="email">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full rounded-md border border-neutral-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1" htmlFor="password">
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full rounded-md border border-neutral-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            placeholder="Your password"
+            autoComplete="current-password"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading !== null}
+          className="w-full rounded-md bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
+        >
+          {loading === "pwd" ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+
+      <div className="my-6 flex items-center gap-3 text-sm text-neutral-500">
+        <span className="h-px flex-1 bg-neutral-200" />
+        or
+        <span className="h-px flex-1 bg-neutral-200" />
+      </div>
+
+      {/* Magic link */}
+      <form onSubmit={handleMagicLink}>
+        <button
+          type="submit"
+          disabled={!email || loading !== null}
+          className="w-full rounded-md border border-neutral-300 bg-white px-4 py-2 text-neutral-800 hover:bg-neutral-50 disabled:opacity-60"
+          title={!email ? "Enter your email above first" : "Send me a magic link"}
+        >
+          {loading === "magic" ? "Sending link…" : "Email me a magic link"}
+        </button>
+      </form>
+
+      {/* Google OAuth */}
       <button
-        type="button"
-        onClick={sendMagic}
-        disabled={!email || loading}
-        className="w-full rounded bg-emerald-700 text-white py-2 disabled:opacity-50"
+        onClick={handleGoogle}
+        disabled={loading !== null}
+        className="mt-3 w-full rounded-md border border-neutral-300 bg-white px-4 py-2 text-neutral-800 hover:bg-neutral-50 disabled:opacity-60"
       >
-        {loading ? "Sending..." : "Email me a magic link"}
+        {loading === "google" ? "Opening Google…" : "Continue with Google"}
       </button>
 
-      <div className="my-4 text-center text-sm text-neutral-500">— or —</div>
-
-      <button
-        type="button"
-        onClick={signInWithGoogle}
-        className="w-full rounded border py-2"
-      >
-        Continue with Google
-      </button>
-
-      {msg && <p className="mt-4 text-sm text-neutral-700">{msg}</p>}
-    </div>
+      <p className="mt-6 text-sm text-neutral-600">
+        Don’t have an account? <a href="/signup" className="underline">Create one</a>
+      </p>
+    </main>
   );
 }
