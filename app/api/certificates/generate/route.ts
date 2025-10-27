@@ -1,19 +1,22 @@
 // app/api/certificates/generate/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { trySupabaseService } from "@/lib/supabase/service";
 import { certificateSVG } from "@/lib/certificates/template";
+import { Resvg } from "@resvg/resvg-js";
+
+/** Prevent Next from trying to prerender/optimize this during build */
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
     const { actId } = (await req.json()) as { actId?: string };
     if (!actId) return NextResponse.json({ error: "Missing actId" }, { status: 400 });
 
-    // Must be signed in + admin
+    // Must be signed in + admin (use anon server client)
     const sb = supabaseServer();
-    const {
-      data: { user },
-    } = await sb.auth.getUser();
+    const { data: { user } } = await sb.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { data: admin } = await sb
@@ -21,42 +24,59 @@ export async function POST(req: Request) {
       .select("user_id")
       .eq("user_id", user.id)
       .maybeSingle();
+
     if (!admin) return NextResponse.json({ error: "Admins only" }, { status: 403 });
 
-    // Get the act
-    const { data: act, error: actErr } = await supabaseService
+    // Use service client only at runtime, and only if configured
+    const svc = trySupabaseService();
+    if (!svc) {
+      return NextResponse.json(
+        { error: "Server is not configured with SUPABASE_SERVICE_ROLE_KEY." },
+        { status: 500 }
+      );
+    }
+
+    // Get good act + actor name (adjust join as per your schema)
+    const { data: act, error: actErr } = await svc
       .from("good_acts")
       .select("id, person_name, created_at")
       .eq("id", actId)
       .single();
-    if (actErr || !act) return NextResponse.json({ error: "Act not found" }, { status: 404 });
 
-    // Generate SVG certificate
+    if (actErr || !act) {
+      return NextResponse.json({ error: "Act not found" }, { status: 404 });
+    }
+
     const svg = certificateSVG({
       actId: act.id,
       personName: act.person_name ?? "Friend of Aikya",
       dateISO: act.created_at ?? undefined,
     });
 
-    // Upload SVG to certificates bucket
-    const path = `${act.id}/certificate-${Date.now()}.svg`;
-    const { error: upErr } = await supabaseService.storage
-      .from("certificates")
-      .upload(path, new Blob([svg], { type: "image/svg+xml" }), {
-        contentType: "image/svg+xml",
-        upsert: true,
-      });
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 });
+    // Render to PNG buffer
+    const resvg = new Resvg(svg, { fitTo: { mode: "width", value: 1600 } });
+    const png = resvg.render().asPng();
+
+    // Upload to certificates bucket
+    const path = `${act.id}/certificate-${Date.now()}.png`;
+    const { error: upErr } = await svc.storage.from("certificates").upload(path, png, {
+      contentType: "image/png",
+      upsert: true,
+    });
+    if (upErr) {
+      return NextResponse.json({ error: upErr.message }, { status: 400 });
+    }
 
     // Public URL
-    const { data: pub } = supabaseService.storage.from("certificates").getPublicUrl(path);
+    const { data: pub } = svc.storage.from("certificates").getPublicUrl(path);
     const url = pub?.publicUrl;
 
     // Save to act
-    const { error: updErr } = await supabaseService
+    const { error: updErr } = await svc
       .from("good_acts")
       .update({ certificate_url: url })
       .eq("id", act.id);
+
     if (updErr) return NextResponse.json({ error: updErr.message }, { status: 400 });
 
     return NextResponse.json({ ok: true, url });
