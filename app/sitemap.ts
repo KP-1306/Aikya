@@ -1,32 +1,39 @@
-import { MetadataRoute } from "next";
-import { supabaseService } from "@/lib/supabase/service";
+// app/sitemap.ts
+import type { MetadataRoute } from "next";
+import { trySupabaseService } from "@/lib/supabase/service";
+
+const BASE = "https://aikyanow.netlify.app";
+
+export const revalidate = 60;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const base = "https://aikyanow.netlify.app";
+  const svc = trySupabaseService();
 
-  // Core pages
-  const items: MetadataRoute.Sitemap = [
-    { url: `${base}/`, lastModified: new Date(), changeFrequency: "hourly", priority: 1 },
-    { url: `${base}/about`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.3 },
+  let slugs: { slug: string; updated_at?: string | null }[] = [];
+
+  if (svc) {
+    const { data } = await svc
+      .from("stories")
+      .select("slug, updated_at")
+      .eq("is_published", true)
+      .order("published_at", { ascending: false })
+      .limit(500);
+    slugs = data ?? [];
+  }
+
+  const staticPages: MetadataRoute.Sitemap = [
+    { url: `${BASE}/`, lastModified: new Date() },
+    { url: `${BASE}/about`, lastModified: new Date() },
+    { url: `${BASE}/submit`, lastModified: new Date() },
+    { url: `${BASE}/privacy`, lastModified: new Date() },
+    { url: `${BASE}/terms`, lastModified: new Date() },
   ];
 
-  // Stories (published only)
-  const { data } = await supabaseService
-    .from("stories")
-    .select("slug, published_at")
-    .eq("is_published", true)
-    .order("published_at", { ascending: false });
+  const storyPages: MetadataRoute.Sitemap =
+    slugs.map((s) => ({
+      url: `${BASE}/story/${s.slug}`,
+      lastModified: s.updated_at ? new Date(s.updated_at) : new Date(),
+    })) ?? [];
 
-  (data ?? []).forEach((s: any) => {
-    items.push({
-      url: `${base}/story/${s.slug}`,
-      lastModified: s.published_at ? new Date(s.published_at) : new Date(),
-      changeFrequency: "weekly",
-      priority: 0.8,
-    });
-  });
-
-  // TODO: Add city/state index pages if you want (query distinct city/state)
-
-  return items;
+  return [...staticPages, ...storyPages];
 }
