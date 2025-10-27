@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseService } from "@/lib/supabase/service";
+import { requireSupabaseService } from "@/lib/supabase/service";
+
 import { embedText } from "@/lib/embeddings";
 
 type Body = { quote: string; state?: string; limit?: number };
@@ -11,6 +12,9 @@ export async function POST(req: Request) {
     if (!quote || quote.trim().length < 4) {
       return NextResponse.json({ error: "Please enter a longer quote." }, { status: 400 });
     }
+
+    const supabaseService = requireSupabaseService();
+
     const qvec = await embedText(quote);
     const { data, error } = await supabaseService.rpc("quote_search", {
       qvec, k: limit, ustate: state || null
