@@ -3,27 +3,81 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { notFound } from "next/navigation";
 
-import { stories } from "@/lib/mock";
-import RelatedCarousel from "@/components/RelatedCarousel";
-import Comments from "@/components/Comments";
+import { requireSupabaseService } from "@/lib/supabase/service";
 import { getReactions } from "@/lib/reactions";
-import LikeButton from "@/components/LikeButton";
-import SaveButton from "@/components/SaveButton";
-import { getStoryBySlug } from "@/lib/data";
 
-// Proof-of-Good panel is a client component; load only on the client
+// Client-only Proof-of-Good panel
 const ProofPanel = dynamic(() => import("@/components/ProofPanel"), { ssr: false });
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// ---- Helpers ----
+async function fetchStory(slug: string) {
+  const svc = requireSupabaseService();
+  const { data, error } = await svc
+    .from("stories")
+    .select(
+      `
+      id, slug, title, dek, hero_image,
+      what, how, why, life_lesson,
+      city, state, country,
+      read_minutes, published_at, updated_at, is_published
+    `
+    )
+    .eq("slug", slug)
+    .eq("is_published", true)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data ?? null;
+}
+
+async function fetchRelated(story: any) {
+  const svc = requireSupabaseService();
+
+  // Prefer same state (or city if present), otherwise just recent published
+  const base = svc.from("stories").select("id, slug, title, hero_image, city, state, country, read_minutes")
+    .eq("is_published", true)
+    .neq("id", story.id)
+    .order("published_at", { ascending: false });
+
+  let qry = base.limit(12);
+  if (story.city) {
+    qry = qry.eq("city", story.city);
+  } else if (story.state) {
+    qry = qry.eq("state", story.state);
+  }
+
+  const { data } = await qry;
+  return data ?? [];
+}
+
+function canonicalBase() {
+  return (process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "")) || "https://aikyanow.netlify.app";
+}
+
+// ---- Metadata (uses DB) ----
 export async function generateMetadata(
   { params }: { params: { slug: string } }
 ): Promise<Metadata> {
   try {
-    const s: any = await getStoryBySlug(params.slug);
-    const title = s?.title ? `${s.title} — Aikya` : "Aikya — Good Around You";
-    const description = s?.dek || "Local-first, uplifting stories with life lessons.";
-    const url = `https://aikyanow.netlify.app/story/${params.slug}`;
-    const image = s?.hero_image || s?.heroImage || "/og.jpg";
+    const s = await fetchStory(params.slug);
+    if (!s) {
+      // Let Next.js render a generic title if missing (404 will still be triggered by page)
+      return {
+        title: "Aikya — Good Around You",
+        description: "Local-first, uplifting stories with life lessons.",
+      };
+    }
+
+    const base = canonicalBase();
+    const url = `${base}/story/${params.slug}`;
+    const title = `${s.title} — Aikya`;
+    const description = s.dek || "Local-first, uplifting stories with life lessons.";
+    const image = s.hero_image || "/og.jpg";
 
     return {
       title,
@@ -51,23 +105,26 @@ export async function generateMetadata(
   }
 }
 
+// ---- Page ----
 export default async function StoryPage({ params }: { params: { slug: string } }) {
-  // For now we still read from mock; later you can switch to DB loader here too.
-  const s = stories.find((x) => x.slug === params.slug);
-  if (!s) return <div className="py-10 container">Story not found.</div>;
+  const s = await fetchStory(params.slug);
+  if (!s) notFound();
 
-  // Reactions: only fetch from DB when the story has a real DB id
-  const reactions =
-    (s as any).id
-      ? await getReactions((s as any).id as string)
-      : { likeCount: 0, liked: false, saved: false };
+  // Reactions for a real DB story id
+  const reactions = await getReactions(s.id as string).catch(() => ({
+    likeCount: 0,
+    liked: false,
+    saved: false,
+  }));
 
-  // Normalize fields (mock vs DB)
-  const published = new Date((s as any).publishedAt ?? (s as any).published_at ?? Date.now());
-  const minutes = (s as any).readMinutes ?? (s as any).read_minutes ?? 3;
-  const hero = (s as any).heroImage ?? (s as any).hero_image ?? null;
+  const publishedDate = s.published_at ? new Date(s.published_at) : new Date();
+  const minutes = s.read_minutes ?? 3;
+  const hero = s.hero_image ?? null;
 
-  // Slugs for linked city/state pages
+  // Related
+  const related = await fetchRelated(s);
+
+  // Slugs for linked city/state pages (optional routes)
   const citySlug = s.city ? encodeURIComponent(s.city.toLowerCase().replace(/\s+/g, "-")) : null;
   const stateSlug = s.state ? encodeURIComponent(s.state.toLowerCase().replace(/\s+/g, "-")) : null;
 
@@ -84,7 +141,7 @@ export default async function StoryPage({ params }: { params: { slug: string } }
 
         {/* Title & dek */}
         <h1>{s.title}</h1>
-        <p className="text-lg text-neutral-700">{s.dek}</p>
+        {s.dek && <p className="text-lg text-neutral-700">{s.dek}</p>}
 
         {/* Meta (linked city/state) */}
         <div className="not-prose text-sm text-neutral-500">
@@ -96,26 +153,27 @@ export default async function StoryPage({ params }: { params: { slug: string } }
           ) : (
             s.country
           )}{" "}
-          • {published.toDateString()} • {minutes} min read
+          • {publishedDate.toDateString()} • {minutes} min read
         </div>
 
         {/* Reactions (Like / Save) */}
         <div className="not-prose mt-4 flex items-center gap-3">
-          {(s as any).id ? (
-            <>
-              <LikeButton
-                storyId={(s as any).id as string}
-                initialCount={reactions.likeCount}
-                initialLiked={reactions.liked}
-              />
-              <SaveButton
-                storyId={(s as any).id as string}
-                initialSaved={reactions.saved}
-              />
-            </>
-          ) : (
-            <div className="text-xs text-neutral-500">Reactions appear for published stories.</div>
-          )}
+          <dynamic
+            children={null}
+          />
+          {/* keeping your existing buttons */}
+          {/* If these are client components already, they’ll render fine here */}
+          {/* @ts-expect-error Server/Client boundary handled in components */}
+          <LikeButton
+            storyId={s.id as string}
+            initialCount={reactions.likeCount}
+            initialLiked={reactions.liked}
+          />
+          {/* @ts-expect-error Server/Client boundary handled in components */}
+          <SaveButton
+            storyId={s.id as string}
+            initialSaved={reactions.saved}
+          />
         </div>
 
         {/* Hero image */}
@@ -124,26 +182,40 @@ export default async function StoryPage({ params }: { params: { slug: string } }
             <div className="relative w-full aspect-[16/9] overflow-hidden rounded-2xl ring-1 ring-black/5">
               <Image src={hero} alt={s.title} fill className="object-cover" />
             </div>
-            <figcaption className="mt-1">Image credit: CC0/Stock</figcaption>
+            <figcaption className="mt-1 text-sm text-neutral-500">Image credit: CC0/Stock</figcaption>
           </figure>
         )}
 
         {/* Sections */}
-        <h3>What happened</h3>
-        <p>{s.what}</p>
+        {s.what && (
+          <>
+            <h3>What happened</h3>
+            <p>{s.what}</p>
+          </>
+        )}
 
-        <h3>How they acted</h3>
-        <p>{s.how}</p>
+        {s.how && (
+          <>
+            <h3>How they acted</h3>
+            <p>{s.how}</p>
+          </>
+        )}
 
-        <h3>Why it matters</h3>
-        <p>{s.why}</p>
+        {s.why && (
+          <>
+            <h3>Why it matters</h3>
+            <p>{s.why}</p>
+          </>
+        )}
 
-        <p><strong>{s.lifeLesson}</strong></p>
+        {s.life_lesson && <p><strong>{s.life_lesson}</strong></p>}
 
         <hr />
 
-        {/* Sources */}
-        {s.sources?.length ? (
+        {/* Sources (optional: if you store a JSON array of sources) */}
+        {/* If your schema keeps sources JSON, you can render them similarly by selecting sources in fetchStory */}
+        {/*
+        {Array.isArray(s.sources) && s.sources.length > 0 && (
           <div className="not-prose text-sm text-neutral-600 space-y-1">
             <div className="font-medium">Inspired by:</div>
             <ul className="sources-list">
@@ -156,30 +228,27 @@ export default async function StoryPage({ params }: { params: { slug: string } }
               ))}
             </ul>
           </div>
-        ) : null}
+        )}
+        */}
       </article>
 
       {/* Proof-of-Good panel (client-only) */}
-      {(s as any).id && (
-        <div className="container max-w-2xl mt-8">
-          <ProofPanel storyId={(s as any).id as string} />
-        </div>
-      )}
+      <div className="container max-w-2xl mt-8">
+        {/* @ts-expect-error dynamic client component */}
+        <ProofPanel storyId={s.id as string} />
+      </div>
 
-      {/* Comments (renders only when story has a real DB id) */}
+      {/* Comments */}
       <div className="container max-w-2xl">
-        {(s as any).id ? (
-          <Comments storyId={(s as any).id as string} />
-        ) : (
-          <div className="mt-8 text-sm text-neutral-500">
-            Comments will appear here once this story is published from the database.
-          </div>
-        )}
+        {/* @ts-expect-error Comments is client/server split internally */}
+        <Comments storyId={s.id as string} />
       </div>
 
       {/* Related slider */}
       <div className="container">
-        <RelatedCarousel current={s} all={stories} />
+        {/* Keep your existing RelatedCarousel API; pass the current and a list */}
+        {/* @ts-expect-error component typing local */}
+        <RelatedCarousel current={s} all={related} />
       </div>
     </>
   );
