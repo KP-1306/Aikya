@@ -1,133 +1,167 @@
 // app/api/search/route.ts
 import { NextResponse } from "next/server";
-import { requireSupabaseService } from "@/lib/supabase/service";
+import { createClient } from "@supabase/supabase-js";
+import OpenAI from "openai";
 
-/**
- * Runtime note:
- * We use the Node runtime so we can safely call external APIs without Edge crypto constraints.
- * Keep this aligned with your other server routes (e.g., certificates API).
- */
 export const runtime = "nodejs";
 
-// --- Config ---
-const DEFAULT_K = 10;
-const MAX_K = 25;
+// --- Supabase (public client; we only read published rows) ---
+const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SB_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+function sb() {
+  return createClient(SB_URL, SB_ANON, { auth: { persistSession: false } });
+}
 
-// --- Helpers ---
+// --- OpenAI (optional) ---
+const hasOpenAI = !!process.env.OPENAI_API_KEY;
+const openai = hasOpenAI ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }) : null;
+
+// --- Limits / helpers ---
+const DEFAULT_K = 12;
+const MAX_K = 24;
+
 function clampK(v: unknown): number {
   const n = Number(v ?? DEFAULT_K);
   if (!Number.isFinite(n) || n <= 0) return DEFAULT_K;
   return Math.min(Math.max(1, Math.trunc(n)), MAX_K);
 }
-
 function sanitizeQuery(q: unknown): string {
   if (typeof q !== "string") return "";
-  // strip control chars and trim
   return q.replace(/[\u0000-\u001F\u007F]+/g, " ").trim();
 }
 
-async function embedWithOpenAI(query: string): Promise<number[] | null> {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return null;
+// --- Types ---
+type StoryRow = {
+  id: string;
+  slug: string;
+  title: string;
+  dek: string | null;
+  city: string | null;
+  state: string | null;
+  hero_image: string | null;
+  read_minutes: number | null;
+};
 
-  // Use fetch to avoid bundling SDKs and keep the route lean
-  const resp = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({
+// --- Semantic search (try both RPC names) ---
+async function vectorSearch(query: string, k: number) {
+  if (!openai) return { data: null as StoryRow[] | null, error: null as string | null };
+
+  try {
+    const emb = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: query,
-    }),
-  });
+    });
+    const embedding = emb.data[0].embedding;
 
-  if (!resp.ok) {
-    // Do not throw—gracefully fall back to text search
-    return null;
+    // Try RPC: semantic_search_stories
+    const s = sb();
+    let { data, error } = await s.rpc("semantic_search_stories", {
+      query_embedding: embedding as any,
+      match_count: k,
+    });
+
+    // If that RPC name doesn't exist, try search_stories_by_embedding
+    if (error || !Array.isArray(data)) {
+      const alt = await s.rpc("search_stories_by_embedding", {
+        query_embedding: embedding as any,
+        match_count: k,
+      });
+      data = alt.data as any;
+      error = alt.error as any;
+    }
+
+    if (error) return { data: null, error: error.message };
+    if (!Array.isArray(data)) return { data: [], error: null };
+
+    // Ensure consistent shape
+    const rows: StoryRow[] = data.map((r: any) => ({
+      id: r.id,
+      slug: r.slug,
+      title: r.title,
+      dek: r.dek ?? null,
+      city: r.city ?? null,
+      state: r.state ?? null,
+      hero_image: r.hero_image ?? null,
+      read_minutes: r.read_minutes ?? null,
+    }));
+
+    return { data: rows, error: null };
+  } catch (e: any) {
+    // graceful fallback
+    return { data: null, error: e?.message ?? "embedding_failed" };
   }
-
-  const json = (await resp.json()) as {
-    data?: Array<{ embedding: number[] }>;
-  };
-
-  const emb = json?.data?.[0]?.embedding;
-  return Array.isArray(emb) ? emb : null;
 }
 
-async function textSearch(supa: ReturnType<typeof requireSupabaseService>, q: string, k: number) {
-  // Basic, fast fallback using ILIKE on title/dek; keeps search functional without OpenAI
-  return supa
+// --- Text fallback (ILIKE) ---
+async function textSearch(q: string, k: number) {
+  const like = `%${q}%`;
+  const s = sb();
+  const { data, error } = await s
     .from("stories")
-    .select("id, slug, title, dek, hero_image, state, city, published_at")
+    .select("id, slug, title, dek, city, state, hero_image, read_minutes, published_at")
     .eq("is_published", true)
-    .or(`title.ilike.%${q}%,dek.ilike.%${q}%`)
+    .or(
+      [
+        `title.ilike.${like}`,
+        `dek.ilike.${like}`,
+        `what.ilike.${like}`,
+        `why.ilike.${like}`,
+        `how.ilike.${like}`,
+        `city.ilike.${like}`,
+        `state.ilike.${like}`,
+      ].join(",")
+    )
     .order("published_at", { ascending: false })
     .limit(k);
+
+  if (error) return { data: null as StoryRow[] | null, error: error.message };
+  const rows: StoryRow[] = (data || []).map((r: any) => ({
+    id: r.id,
+    slug: r.slug,
+    title: r.title,
+    dek: r.dek ?? null,
+    city: r.city ?? null,
+    state: r.state ?? null,
+    hero_image: r.hero_image ?? null,
+    read_minutes: r.read_minutes ?? null,
+  }));
+  return { data: rows, error: null };
 }
 
-async function vectorSearch(
-  supa: ReturnType<typeof requireSupabaseService>,
-  embedding: number[],
-  k: number
-) {
-  // RPC defined in your snapshot:
-  // search_stories_by_embedding(query_embedding vector, match_count int)
-  return supa.rpc("search_stories_by_embedding", {
-    query_embedding: embedding,
-    match_count: k,
-  });
+// --- Core worker ---
+async function handleSearch(q: string, k: number) {
+  // 1) Try semantic first (if OpenAI available)
+  const vec = await vectorSearch(q, k);
+  if (Array.isArray(vec.data)) {
+    return NextResponse.json({ data: vec.data, mode: "vector", error: null });
+  }
+
+  // 2) Fallback to text
+  const txt = await textSearch(q, k);
+  if (txt.error) {
+    return NextResponse.json({ data: [], mode: "text", error: txt.error }, { status: 500 });
+  }
+  return NextResponse.json({ data: txt.data ?? [], mode: "text", error: null });
 }
 
-// --- Core handler (POST body: { q, k? }) ---
+// --- POST: { q, k? } ---
 export async function POST(req: Request) {
   try {
-    const supa = requireSupabaseService();
-
-    const { q: rawQ, k: rawK } =
-      (await req.json().catch(() => ({}))) as { q?: unknown; k?: unknown };
-
-    const q = sanitizeQuery(rawQ);
-    const k = clampK(rawK);
-
-    if (!q) {
-      return NextResponse.json({ data: [], error: "Empty query" }, { status: 400 });
-    }
-
-    // Try semantic first (only if OPENAI key is present and embedding succeeds)
-    const embedding = await embedWithOpenAI(q);
-
-    if (embedding) {
-      const { data, error } = await vectorSearch(supa, embedding, k);
-      if (!error && Array.isArray(data)) {
-        return NextResponse.json({ data, mode: "vector", error: null });
-      }
-      // Fall through to text search if RPC had issues
-    }
-
-    // Fallback: simple text search
-    const { data, error } = await textSearch(supa, q, k);
-    if (error) {
-      return NextResponse.json({ data: [], error: error.message }, { status: 500 });
-    }
-    return NextResponse.json({ data: data ?? [], mode: "text", error: null });
+    const body = (await req.json().catch(() => ({}))) as { q?: unknown; k?: unknown };
+    const q = sanitizeQuery(body.q);
+    const k = clampK(body.k);
+    if (!q) return NextResponse.json({ data: [], error: "Empty query" }, { status: 400 });
+    return handleSearch(q, k);
   } catch (e: any) {
-    return NextResponse.json(
-      { data: [], error: e?.message ?? "Search failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ data: [], error: e?.message ?? "Search failed" }, { status: 500 });
   }
 }
 
-// --- Back-compat GET (?q=&limit=) ---
+// --- GET: ?q=&limit= ---
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = sanitizeQuery(searchParams.get("q"));
   const k = clampK(searchParams.get("limit"));
-
-  // Reuse the POST handler logic by crafting a Request with a JSON body
-  const body = JSON.stringify({ q, k });
-  const fakePost = new Request(req.url, { method: "POST", body, headers: req.headers });
-  return POST(fakePost);
+  if (!q) return NextResponse.json({ data: [], error: "Empty query" }, { status: 400 });
+  return handleSearch(q, k);
 }
