@@ -8,6 +8,7 @@ import FeedToggle from "@/components/FeedToggle";
 import LocalSetupBanner from "@/components/LocalSetupBanner";
 import { getRecommendations } from "@/lib/recs";
 import { supabaseServer } from "@/lib/supabase/server";
+import PrefetchStories from "@/components/PrefetchStories";
 
 type SearchParams = { [k: string]: string | undefined };
 
@@ -43,13 +44,10 @@ function StoryCard({ s }: { s: any }) {
 
 // Build an origin for server-side fetch to /api/search
 function getOrigin() {
-  // Prefer explicit site URL if you’ve set it
   const explicit = process.env.NEXT_PUBLIC_SITE_URL;
   if (explicit) return explicit.replace(/\/+$/, "");
-  // Vercel env var exposes domain without protocol
   const vercel = process.env.VERCEL_URL;
   if (vercel) return `https://${vercel}`;
-  // Local fallback
   return "http://localhost:3000";
 }
 
@@ -112,8 +110,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       const res = await fetch(`${getOrigin()}/api/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Keep search always fresh in dev; you can change to { cache: "no-store" }
-        // to avoid caching in prod too.
         cache: "no-store",
         body: JSON.stringify({ q, k: 12 }),
       });
@@ -128,6 +124,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     }
   }
 
+  // 8) Prefetch URLs for story pages (main grid + recs)
+  const prefetchHrefs = [
+    ...items.map((s: any) => `/story/${s.slug}`),
+    ...(uniqueRecs ?? []).map((r: any) => `/story/${r.slug}`),
+  ];
+  const prefetchList = Array.from(new Set(prefetchHrefs));
+
   return (
     <div className="container space-y-8">
       {/* Top header with mode toggle + Search */}
@@ -139,12 +142,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
         {/* Simple GET search (keeps URL shareable). Preserves current mode via hidden input. */}
         <form method="GET" className="flex items-center gap-2 w-full sm:w-auto">
-          <input
-            type="hidden"
-            name="mode"
-            value={mode}
-            aria-hidden="true"
-          />
+          <input type="hidden" name="mode" value={mode} aria-hidden="true" />
           <input
             name="q"
             defaultValue={q}
@@ -179,9 +177,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       {hasQuery && (
         <section className="space-y-3">
           <div className="flex items-baseline justify-between">
-            <h3 className="text-lg font-semibold">
-              Search results for “{q}”
-            </h3>
+            <h3 className="text-lg font-semibold">Search results for “{q}”</h3>
             <p className="text-xs text-neutral-500">Semantic + text fallback</p>
           </div>
 
@@ -207,9 +203,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       <section className="space-y-3">
         <div className="flex items-baseline justify-between">
           <h3 className="text-lg font-semibold">Featured in this view</h3>
-          <p className="text-xs text-neutral-500">
-            Region: {mode.toUpperCase()}
-          </p>
+          <p className="text-xs text-neutral-500">Region: {mode.toUpperCase()}</p>
         </div>
 
         {items.length > 0 ? (
@@ -255,9 +249,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   </div>
                 )}
                 <div className="p-4">
-                  <div className="text-xs text-neutral-500">
-                    {r.city ?? r.state ?? "—"}
-                  </div>
+                  <div className="text-xs text-neutral-500">{r.city ?? r.state ?? "—"}</div>
                   <h4 className="font-medium line-clamp-2">{r.title}</h4>
                 </div>
               </Link>
@@ -265,6 +257,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           </div>
         </section>
       )}
+
+      {/* Trigger Next.js prefetch for visible stories once grid enters viewport */}
+      <PrefetchStories hrefs={prefetchList} max={24} />
     </div>
   );
 }
