@@ -1,76 +1,117 @@
+// app/api/admin/stories/save/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireSupabaseService } from "@/lib/supabase/service";
 
-import { toSlug } from "@/lib/slug";
+export const runtime = "nodejs";
+
+async function isAdmin(sb: ReturnType<typeof supabaseServer>) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return false;
+  const { data: profile } = await sb.from("profiles").select("role").eq("id", user.id).single();
+  return profile?.role === "admin";
+}
+
+type Payload = Partial<{
+  id: string;
+  slug: string;
+  title: string;
+  dek: string;
+  what: string;
+  how: string;
+  why: string;
+  life_lesson: string;
+  city: string;
+  state: string;
+  country: string;
+  hero_image: string;
+  read_minutes: number | string;
+  sources: unknown; // expect json/jsonb
+  is_published: boolean;
+}>;
+
+const ALLOWED: (keyof Payload)[] = [
+  "slug","title","dek","what","how","why","life_lesson",
+  "city","state","country","hero_image","read_minutes","sources","is_published"
+];
+
+function coercePayload(raw: any): { id: string; update: Record<string, any> } {
+  const id = String(raw.id || "");
+  const update: Record<string, any> = {};
+  for (const k of ALLOWED) {
+    if (raw[k] === undefined) continue;
+    if (k === "read_minutes") {
+      const n = Number(raw.read_minutes);
+      if (Number.isFinite(n) && n > 0) update.read_minutes = Math.round(n);
+      continue;
+    }
+    if (k === "is_published") {
+      update.is_published = !!raw.is_published;
+      if (update.is_published) update.published_at = new Date().toISOString();
+      continue;
+    }
+    if (k === "sources") {
+      try {
+        // accept already-parsed JSON, or a stringified JSON
+        update.sources = typeof raw.sources === "string" ? JSON.parse(raw.sources) : raw.sources;
+      } catch {
+        // ignore bad JSON; don’t set sources
+      }
+      continue;
+    }
+    update[k] = typeof raw[k] === "string" ? raw[k].trim() : raw[k];
+  }
+  return { id, update };
+}
 
 export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-
-    // 1) auth + admin
-    const sb = supabaseServer();
-    const { data: { user } } = await sb.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const { data: admin } = await sb.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
-    if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-    const supabaseService = requireSupabaseService();
-
-    
-    // 2) normalize
-    const slug = toSlug(body.title || body.slug || "");
-    if (!slug) return NextResponse.json({ error: "Title required" }, { status: 400 });
-
-    const patch: any = {
-      slug,
-      title: body.title ?? "",
-      dek: body.dek ?? "",
-      category: body.category ?? "ActsOfKindness",
-      city: body.city || null,
-      state: body.state || null,
-      country: body.country || "IN",
-      what: body.what ?? "",
-      how: body.how ?? "",
-      why: body.why ?? "",
-      life_lesson: body.life_lesson ?? "",
-      read_minutes: body.read_minutes ?? 3,
-      hero_image: body.hero_image || null,
-      hero_alt: body.hero_alt || null,
-      hero_credit: body.hero_credit || null,
-    };
-
-    if (body.is_published) {
-      patch.is_published = true;
-      patch.published_at = new Date().toISOString();
-    } else {
-      patch.is_published = false;
-    }
-
-    // 3) upsert (if id present → update)
-    let q = supabaseService.from("stories");
-    const { data, error } = body.id
-      ? await q.update(patch).eq("id", body.id).select("id, slug").single()
-      : await q.insert(patch).select("id, slug").single();
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-
-    // 4) sources (optional): replace existing sources with provided set
-    const sources: { name: string; url: string }[] = Array.isArray(body.sources) ? body.sources : [];
-    if (sources.length) {
-      await supabaseService.from("sources").delete().eq("story_id", data.id);
-      const payload = sources.map((s) => ({
-        story_id: data.id,
-        name: s.name || new URL(s.url).hostname,
-        url: s.url,
-      }));
-      // Ignore insert error detail in response; surface succinct message
-      const { error: srcErr } = await supabaseService.from("sources").insert(payload);
-      if (srcErr) return NextResponse.json({ error: srcErr.message }, { status: 400 });
-    }
-
-    return NextResponse.json({ ok: true, id: data.id, slug: data.slug });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+  const sb = supabaseServer();
+  if (!(await isAdmin(sb))) {
+    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
+
+  const ctype = req.headers.get("content-type") || "";
+  const body: Payload | FormData = ctype.includes("application/json")
+    ? (await req.json().catch(() => ({})))
+    : (await req.formData());
+
+  // Normalize payload
+  const data: any = ctype.includes("application/json")
+    ? body
+    : Object.fromEntries((body as FormData).entries());
+
+  const { id, update } = coercePayload(data);
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  if (!Object.keys(update).length) {
+    return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+  }
+
+  // Slug uniqueness check (only if slug provided)
+  if (update.slug) {
+    const { data: dup, error: dupErr } = await sb
+      .from("stories")
+      .select("id")
+      .eq("slug", update.slug)
+      .neq("id", id)
+      .limit(1);
+
+    if (dupErr) return NextResponse.json({ error: dupErr.message }, { status: 500 });
+    if (dup && dup.length > 0) {
+      return NextResponse.json({ error: "Slug already exists" }, { status: 409 });
+    }
+  }
+
+  // Persist using service role to bypass RLS complexities on admin edits
+  const svc = requireSupabaseService();
+  const { error } = await svc.from("stories").update(update).eq("id", id);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Redirect back to drafts if we just published; else stay on admin drafts list
+  const url = new URL("/admin/(content)/drafts", req.url);
+  return NextResponse.redirect(url);
+}
+
+export async function GET() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }
