@@ -1,108 +1,130 @@
+import Link from "next/link";
+
 export const metadata = {
-  title: "Privacy Policy • Aikya",
+  title: "Privacy Policy — Aikya",
   description:
-    "How Aikya collects, uses, stores, and protects your data, plus your choices and rights.",
+    "How Aikya collects, uses, and protects your data. Clear choices, minimal data, and human-first safeguards.",
 };
 
 export default function PrivacyPage() {
   return (
-    <main className="container mx-auto max-w-3xl px-4 py-12">
-      <h1 className="text-3xl font-semibold tracking-tight">Privacy Policy</h1>
-      <p className="mt-3 text-neutral-700">Last updated: 27 Oct 2025</p>
+    <main className="mx-auto max-w-3xl px-6 py-12 prose prose-zinc dark:prose-invert">
+      <h1>Privacy Policy</h1>
+      <p>
+        We built Aikya to spotlight good news with minimal data collection and
+        transparent controls. This policy explains what we collect, why, and how
+        you can exercise your choices.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Who we are</h2>
-        <p className="mt-3 text-neutral-700">
-          Aikya is a community news platform. This policy explains what we
-          collect and why, how we use it, and the choices you have.
-        </p>
-      </section>
+      <h2>What we collect</h2>
+      <ul>
+        <li>
+          <strong>Account basics</strong>: Email address and profile info you
+          choose to provide (e.g., city/state/country).
+        </li>
+        <li>
+          <strong>App activity</strong>: Saves, likes, comments, and basic usage
+          telemetry to improve recommendations and reliability.
+        </li>
+        <li>
+          <strong>Technical data</strong>: Standard logs (IP, device/browser,
+          pages visited) for security and performance.
+        </li>
+        <li>
+          <strong>Content submissions</strong>: Comments, story tips, and any
+          files/links you voluntarily submit.
+        </li>
+      </ul>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Data we collect</h2>
-        <ul className="mt-3 list-disc space-y-2 pl-6 text-neutral-700">
-          <li><strong>Account data:</strong> email, profile name, city/state/country.</li>
-          <li><strong>Usage data:</strong> page views, likes/saves, comments, device info.</li>
-          <li><strong>Content:</strong> stories and comments you submit.</li>
-          <li><strong>Cookies:</strong> session cookies and an anonymous ID for analytics.</li>
-        </ul>
-      </section>
+      <h2>How we use data</h2>
+      <ul>
+        <li>Provide the service (authentication, feeds, reactions, comments).</li>
+        <li>Improve relevance (location-aware feed; “popular last 30d”).</li>
+        <li>Keep the community safe (moderation, abuse prevention, rate limits).</li>
+        <li>Communicate with you (transactional emails; optional digests if you opt in).</li>
+      </ul>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">How we use data</h2>
-        <ul className="mt-3 list-disc space-y-2 pl-6 text-neutral-700">
-          <li>Provide and secure the service (authentication, moderation, abuse prevention).</li>
-          <li>Personalize feeds by city/state and show popular stories.</li>
-          <li>Send account emails (magic links, notices you request).</li>
-          <li>Measure and improve product performance.</li>
-        </ul>
-      </section>
+      <h2>AI assistance</h2>
+      <p>
+        Aikya uses assistive AI to help summarize public articles and support
+        moderation. AI output is reviewed or constrained with rules and fallbacks.
+        We do not sell your personal data to AI providers.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Sharing & processors</h2>
-        <p className="mt-3 text-neutral-700">
-          We do not sell your personal data. We use trusted processors to run
-          Aikya, for example hosting (Netlify), database & auth (Supabase),
-          email delivery, and analytics. They process data on our behalf under
-          contracts and security commitments.
-        </p>
-      </section>
+      <h2>Legal bases</h2>
+      <p>
+        Depending on your region, we process data to perform our contract with
+        you (provide Aikya), for legitimate interests (security, quality, and
+        relevance), and with consent where required (e.g., marketing digests).
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Retention</h2>
-        <p className="mt-3 text-neutral-700">
-          Account data is retained while your account is active. You may request
-          deletion; we will delete or anonymize data unless we must retain it for
-          legal or security reasons (e.g., abuse investigations, audit logs).
-        </p>
-      </section>
+      <h2>Sharing</h2>
+      <p>
+        We use trusted service providers to run Aikya (e.g., hosting/CDN,
+        authentication, email). They process data on our behalf under contracts
+        that protect your information. We may share content you publish (e.g.,
+        comments) according to the product’s normal function.
+      </p>
+      <ul>
+        <li>Hosting & CDN (e.g., Netlify or equivalent)</li>
+        <li>Authentication & Database (e.g., Supabase)</li>
+        <li>Email (transactional provider, if enabled)</li>
+        <li>Analytics (privacy-respecting usage trends)</li>
+      </ul>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Security</h2>
-        <p className="mt-3 text-neutral-700">
-          We use industry practices such as encryption in transit, role-based
-          access, and row-level security. No internet service can be 100% secure,
-          but we work to protect your information and promptly remediate issues.
-        </p>
-      </section>
+      <h2>Retention</h2>
+      <p>
+        We keep data only as long as necessary for the purposes described here
+        (or as required by law). You may request deletion of your account data.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Your choices</h2>
-        <ul className="mt-3 list-disc space-y-2 pl-6 text-neutral-700">
-          <li>Access/Update: edit your profile and preferences in the Account page.</li>
-          <li>Export/Delete: email us to request a copy or deletion of your data.</li>
-          <li>Cookies: block or delete cookies in your browser (site features may break).</li>
-          <li>Emails: we only email you for account actions you initiate.</li>
-        </ul>
-      </section>
+      <h2>Your choices</h2>
+      <ul>
+        <li>Update profile and location in your account settings.</li>
+        <li>Unsubscribe from optional emails at any time.</li>
+        <li>
+          Request data export or deletion by emailing{" "}
+          <a href="mailto:privacy@aikya.example">privacy@aikya.example</a>.
+        </li>
+      </ul>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Children</h2>
-        <p className="mt-3 text-neutral-700">
-          Aikya is not directed to children under 13. If you believe a child has
-          provided us personal data, contact us for removal.
-        </p>
-      </section>
+      <h2>Children</h2>
+      <p>
+        Aikya is not intended for children under the age of 13 (or the minimum
+        age in your jurisdiction). Do not use Aikya if you do not meet the age
+        requirement.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Regional rights</h2>
-        <p className="mt-3 text-neutral-700">
-          Depending on your location, you may have additional privacy rights
-          (e.g., GDPR/CCPA). We honor valid requests subject to verification.
-        </p>
-      </section>
+      <h2>Security</h2>
+      <p>
+        We use industry-standard safeguards (encryption in transit, access
+        controls, audit logs) and limit access to personal data to authorized
+        personnel and contractors who need it to operate Aikya.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Contact</h2>
-        <p className="mt-3 text-neutral-700">
-          Privacy questions or requests:{" "}
-          <a className="underline" href="mailto:privacy@aikya.news">privacy@aikya.news</a>
-        </p>
-      </section>
+      <h2>International transfers</h2>
+      <p>
+        Your data may be processed in countries different from where you reside.
+        We rely on appropriate safeguards where required.
+      </p>
 
-      <div className="mt-12">
-        <a href="/" className="underline">← Back to home</a>
-      </div>
+      <h2>Changes</h2>
+      <p>
+        We may update this policy as Aikya evolves. We’ll post the new version
+        here and update the “Last updated” date.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        Privacy questions or requests:{" "}
+        <a href="mailto:privacy@aikya.example">privacy@aikya.example</a>
+      </p>
+
+      <p className="text-sm text-zinc-500">Last updated: 30 Oct 2025</p>
+
+      <p className="text-sm">
+        See also our <Link href="/terms">Terms of Service</Link>.
+      </p>
     </main>
   );
 }
