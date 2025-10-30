@@ -1,9 +1,41 @@
+// app/error.tsx
 "use client";
-export default function Error({ error }: { error: Error }) {
+
+import Link from "next/link";
+import { useEffect } from "react";
+
+export default function GlobalError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  useEffect(() => {
+    // Best-effort Sentry capture if loaded
+    (async () => {
+      try {
+        const Sentry = await import("@sentry/nextjs");
+        Sentry.captureException(error);
+      } catch {
+        // ignore
+      }
+    })();
+  }, [error]);
+
   return (
-    <div className="container py-16 text-center">
-      <h1 className="text-2xl font-bold mb-2">Something went wrong</h1>
-      <p className="text-neutral-600">{error.message || "Please try again."}</p>
-    </div>
+    <main className="container py-16 space-y-4">
+      <h1 className="text-2xl font-semibold">Something went wrong</h1>
+      <p className="text-neutral-600">
+        We hit a snag while loading this page. You can try again, or head back home.
+      </p>
+      <div className="flex gap-3">
+        <button onClick={reset} className="btn">Try again</button>
+        <Link href="/" className="btn-secondary">Go home</Link>
+      </div>
+      {error?.digest ? (
+        <p className="text-xs text-neutral-400">Ref: {error.digest}</p>
+      ) : null}
+    </main>
   );
 }
