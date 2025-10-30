@@ -1,39 +1,64 @@
 // app/sitemap.ts
 import type { MetadataRoute } from "next";
-import { trySupabaseService } from "@/lib/supabase/service";
+import {
+  requireSupabaseService,
+  trySupabaseService,
+} from "@/lib/supabase/service";
 
-const BASE = "https://aikyanow.netlify.app";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 60 * 60; // 1 hour
 
-export const revalidate = 60;
+function getBase(): string {
+  const env = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "");
+  return env || "https://aikyanow.netlify.app";
+}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const svc = trySupabaseService();
+  const BASE = getBase();
 
-  let slugs: { slug: string; updated_at?: string | null }[] = [];
+  // Prefer a non-throwing client first; fall back to require*
+  const svc = trySupabaseService() ?? requireSupabaseService();
 
-  if (svc) {
-    const { data } = await svc
+  let stories:
+    | Array<{ slug: string; updated_at?: string | null; published_at?: string | null }>
+    | null = null;
+
+  try {
+    const { data, error } = await svc
       .from("stories")
-      .select("slug, updated_at")
+      .select("slug, updated_at, published_at, deleted_at")
       .eq("is_published", true)
+      .is("deleted_at", null)
       .order("published_at", { ascending: false })
-      .limit(500);
-    slugs = data ?? [];
+      .limit(5000);
+
+    if (!error) stories = data ?? [];
+  } catch {
+    // ignore; we'll fall back to static pages only
   }
 
+  const now = new Date();
+
   const staticPages: MetadataRoute.Sitemap = [
-    { url: `${BASE}/`, lastModified: new Date() },
-    { url: `${BASE}/about`, lastModified: new Date() },
-    { url: `${BASE}/submit`, lastModified: new Date() },
-    { url: `${BASE}/privacy`, lastModified: new Date() },
-    { url: `${BASE}/terms`, lastModified: new Date() },
+    { url: `${BASE}/`, lastModified: now, changeFrequency: "daily", priority: 1 },
+    { url: `${BASE}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.3 },
+    { url: `${BASE}/submit`, lastModified: now, changeFrequency: "monthly", priority: 0.3 },
+    { url: `${BASE}/privacy`, lastModified: now, changeFrequency: "yearly", priority: 0.1 },
+    { url: `${BASE}/terms`, lastModified: now, changeFrequency: "yearly", priority: 0.1 },
   ];
 
   const storyPages: MetadataRoute.Sitemap =
-    slugs.map((s) => ({
+    (stories ?? []).map((s) => ({
       url: `${BASE}/story/${s.slug}`,
-      lastModified: s.updated_at ? new Date(s.updated_at) : new Date(),
-    })) ?? [];
+      lastModified: s.updated_at
+        ? new Date(s.updated_at)
+        : s.published_at
+        ? new Date(s.published_at)
+        : now,
+      changeFrequency: "weekly",
+      priority: 0.6,
+    })) || [];
 
   return [...staticPages, ...storyPages];
 }
