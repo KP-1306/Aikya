@@ -12,6 +12,19 @@
   NODE_VERSION = "20"
   NPM_FLAGS = "--legacy-peer-deps --no-audit --no-fund"
 
+# Functions runtime settings (used by scheduled function too)
+[functions]
+  node_bundler = "esbuild"
+  included_files = []
+
+# ---- Scheduled Functions ----
+# Runs the embeddings backfill every 20 minutes.
+# Make sure you have netlify/functions/embeddings-cron.ts in your repo.
+[[scheduled.functions]]
+  name = "embeddings-cron"
+  cron = "*/20 * * * *"
+
+# -----------------------------
 # Security headers (safe defaults + Supabase/Google auth allowance)
 [[headers]]
   for = "/*"
