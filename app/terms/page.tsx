@@ -1,113 +1,127 @@
+import Link from "next/link";
+
 export const metadata = {
-  title: "Terms of Service • Aikya",
+  title: "Terms of Service — Aikya",
   description:
-    "Your agreement with Aikya for using the site, posting content, and community participation.",
+    "The terms that govern your use of Aikya, including content rules, rights, and responsibilities.",
 };
 
 export default function TermsPage() {
   return (
-    <main className="container mx-auto max-w-3xl px-4 py-12">
-      <h1 className="text-3xl font-semibold tracking-tight">Terms of Service</h1>
-      <p className="mt-3 text-neutral-700">Last updated: 27 Oct 2025</p>
+    <main className="mx-auto max-w-3xl px-6 py-12 prose prose-zinc dark:prose-invert">
+      <h1>Terms of Service</h1>
+      <p>
+        Welcome to Aikya. By accessing or using Aikya, you agree to these Terms.
+        If you do not agree, do not use the service.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">1. Acceptance of terms</h2>
-        <p className="mt-3 text-neutral-700">
-          By accessing or using Aikya, you agree to these Terms and our Privacy
-          Policy. If you do not agree, please do not use the service.
-        </p>
-      </section>
+      <h2>1. Service overview</h2>
+      <p>
+        Aikya is a positive-news network featuring curated stories, community
+        reactions (likes/saves), comments, and non-cash certificates. We may use
+        assistive AI with human review to help summarize public sources and
+        support moderation.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">2. Use of the service</h2>
-        <ul className="mt-3 list-disc space-y-2 pl-6 text-neutral-700">
-          <li>You must provide accurate information and keep your account secure.</li>
-          <li>You are responsible for your activity and content you submit.</li>
-          <li>Do not misuse the service (no spam, scraping, illegal or harmful behavior).</li>
-        </ul>
-      </section>
+      <h2>2. Accounts & eligibility</h2>
+      <ul>
+        <li>You must be legally capable of entering into these Terms.</li>
+        <li>
+          Provide accurate information and keep your account secure. You’re
+          responsible for activity under your account.
+        </li>
+      </ul>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">3. Your content & license</h2>
-        <p className="mt-3 text-neutral-700">
-          You retain ownership of content you submit. You grant Aikya a worldwide,
-          non-exclusive, royalty-free license to host, store, reproduce, modify
-          (for formatting), and display your content for operating and improving
-          the service. You represent you have the rights to submit it.
-        </p>
-      </section>
+      <h2>3. Your content</h2>
+      <p>
+        You retain ownership of content you submit (e.g., comments). You grant
+        Aikya a worldwide, non-exclusive, royalty-free license to host, store,
+        reproduce, modify (e.g., for formatting), display, and distribute your
+        content in connection with providing the service.
+      </p>
+      <p>
+        Do not post anything unlawful, deceptive, hateful, harassing, pornographic,
+        invasive of privacy, defamatory, spammy, or otherwise harmful. We may
+        remove or moderate content that violates these Terms or our community rules.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">4. Moderation</h2>
-        <p className="mt-3 text-neutral-700">
-          Aikya may remove or restrict content that violates community standards,
-          law, or these Terms. Repeated or severe violations may lead to account
-          limits or termination. You may report content for review.
-        </p>
-      </section>
+      <h2>4. Prohibited conduct</h2>
+      <ul>
+        <li>Attempting to breach security or access non-public areas.</li>
+        <li>Automated scraping beyond what robots.txt permits.</li>
+        <li>Impersonation or misrepresentation.</li>
+        <li>Posting personal data of others without consent.</li>
+      </ul>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">5. Intellectual property</h2>
-        <p className="mt-3 text-neutral-700">
-          Aikya, our logos, and site design are protected by IP laws. Do not use
-          our marks without written permission. For takedown requests, contact{" "}
-          <a className="underline" href="mailto:legal@aikya.news">legal@aikya.news</a>.
-        </p>
-      </section>
+      <h2>5. Moderation & enforcement</h2>
+      <p>
+        We use a combination of human review, rules, and assistive AI to maintain
+        community safety. We may remove content, restrict features, or suspend
+        accounts that violate these Terms or applicable law.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">6. Disclaimers</h2>
-        <p className="mt-3 text-neutral-700">
-          Aikya is provided “as is” without warranties of any kind. We do not
-          guarantee uninterrupted service or error-free content. Stories may link
-          to third-party sites not controlled by us.
-        </p>
-      </section>
+      <h2>6. Intellectual property</h2>
+      <p>
+        Aikya and its logos, product names, and design elements are protected by
+        intellectual property rights. Third-party marks are the property of their
+        owners and used for identification only.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">7. Limitation of liability</h2>
-        <p className="mt-3 text-neutral-700">
-          To the fullest extent permitted by law, Aikya and its operators will
-          not be liable for indirect, incidental, special, consequential, or
-          punitive damages, or any loss of data, profits, or reputation.
-        </p>
-      </section>
+      <h2>7. Certificates</h2>
+      <p>
+        Certificates are a <em>non-cash</em> way to acknowledge positive actions.
+        They have no monetary value and do not represent endorsements by Aikya.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">8. Indemnity</h2>
-        <p className="mt-3 text-neutral-700">
-          You agree to indemnify and hold Aikya harmless from claims arising out
-          of your content or misuse of the service.
-        </p>
-      </section>
+      <h2>8. Disclaimers</h2>
+      <p>
+        Aikya is provided “as is.” We do not guarantee uninterrupted or error-free
+        operation, accuracy of third-party sources, or that every story will meet
+        your expectations. Use Aikya at your own risk.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">9. Changes to the service or terms</h2>
-        <p className="mt-3 text-neutral-700">
-          We may update the service or these Terms. Material changes will be
-          posted here. Continued use after changes means you accept the new Terms.
-        </p>
-      </section>
+      <h2>9. Limitation of liability</h2>
+      <p>
+        To the maximum extent permitted by law, Aikya and its affiliates are not
+        liable for indirect, incidental, special, consequential, or punitive
+        damages, or any loss of profits or revenues, whether incurred directly or
+        indirectly, or any loss of data, use, goodwill, or other intangible losses,
+        resulting from (a) your use of or inability to use Aikya; (b) any content
+        obtained from Aikya; or (c) unauthorized access, use, or alteration of
+        your content.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">10. Governing law</h2>
-        <p className="mt-3 text-neutral-700">
-          These Terms are governed by the laws of India. Jurisdiction: courts of
-          Uttarakhand, India.
-        </p>
-      </section>
+      <h2>10. Termination</h2>
+      <p>
+        You may stop using Aikya at any time. We may suspend or terminate access
+        if you violate these Terms, harm other users, or create legal risk.
+      </p>
 
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">11. Contact</h2>
-        <p className="mt-3 text-neutral-700">
-          Questions about these Terms:{" "}
-          <a className="underline" href="mailto:legal@aikya.news">legal@aikya.news</a>
-        </p>
-      </section>
+      <h2>11. Changes</h2>
+      <p>
+        We may modify these Terms to reflect changes to our service or the law.
+        We’ll post updates here with a new “Last updated” date. Continued use
+        after changes means you accept the updated Terms.
+      </p>
 
-      <div className="mt-12">
-        <a href="/" className="underline">← Back to home</a>
-      </div>
+      <h2>12. Governing law</h2>
+      <p>
+        These Terms are governed by applicable law in your place of residence
+        unless a different jurisdiction is required by mandatory law. Local
+        consumer rights remain unaffected.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        Questions about these Terms:{" "}
+        <a href="mailto:legal@aikya.example">legal@aikya.example</a>
+      </p>
+
+      <p className="text-sm text-zinc-500">Last updated: 30 Oct 2025</p>
+
+      <p className="text-sm">
+        See also our <Link href="/privacy">Privacy Policy</Link>.
+      </p>
     </main>
   );
 }
