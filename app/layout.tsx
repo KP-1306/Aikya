@@ -3,25 +3,29 @@ import "../styles/globals.css";
 import type { Metadata } from "next";
 import { clsx } from "clsx";
 import Link from "next/link";
-import NavUser from "@/components/NavUser";        // server component – safe in layout
+
+import NavUser from "@/components/NavUser";     // server component – safe in layout
 import PageviewPing from "@/components/PageviewPing";
+import Analytics from "@/components/Analytics";
 
-import Header from "@/components/Header";
-
-
-// ⬇️ Force dynamic rendering globally (prevents build-time prerender errors)
+// Force dynamic rendering globally (prevents build-time prerender errors)
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
+// Prefer env for canonical origin; fall back to production URL
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ||
+  "https://aikyanow.netlify.app";
+
 export const metadata: Metadata = {
   title: "Aikya — Good Around You",
   description: "Local-first, uplifting stories with life lessons.",
-  metadataBase: new URL("https://aikyanow.netlify.app"),
+  metadataBase: new URL(SITE_URL),
   openGraph: {
     title: "Aikya — Good Around You",
     description: "Local-first, uplifting stories with life lessons.",
-    url: "https://aikyanow.netlify.app",
+    url: SITE_URL,
     siteName: "Aikya",
     images: [{ url: "/og.jpg", width: 1200, height: 630 }],
     locale: "en_IN",
@@ -37,8 +41,19 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN; // e.g., aikyanow.netlify.app
+
   return (
     <html lang="en">
+      <head>
+        {plausibleDomain ? (
+          <script
+            defer
+            data-domain={plausibleDomain}
+            src="https://plausible.io/js/script.js"
+          />
+        ) : null}
+      </head>
       <body className={clsx("min-h-screen bg-neutral-50")}>
         <header className="border-b bg-white/70 backdrop-blur">
           <div className="container flex items-center justify-between h-16">
@@ -60,8 +75,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
 
-        {/* pageview analytics ping */}
+        {/* pageview analytics ping (your existing lightweight beacon) */}
         <PageviewPing />
+        {/* Sentry init (optional) happens inside; no-op if DSN not set */}
+        <Analytics />
 
         <main className="container py-6">{children}</main>
 
