@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+
+    "seed:stories": "tsx scripts/seed_stories.ts --file seed/stories.json --publish",
+    "seed:stories:lite": "tsx scripts/seed_stories.ts --file seed/stories.json --limit=10 --publish",
+    "seed:acts": "tsx scripts/seed_stories.ts --file seed/stories.json --limit=5 --publish --certs=3",
+    "seed:with-embeds": "tsx scripts/seed_stories.ts --file seed/stories.json --publish --rebuild-embeddings"
   },
   "dependencies": {
     "@mozilla/readability": "^0.4.4",
@@ -30,6 +35,7 @@
     "eslint-config-next": "14.2.5",
     "postcss": "8.4.47",
     "tailwindcss": "3.4.14",
-    "typescript": "5.6.2"
+    "typescript": "5.6.2",
+    "tsx": "^4.19.0"
   }
 }
