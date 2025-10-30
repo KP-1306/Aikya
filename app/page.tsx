@@ -12,6 +12,12 @@ import PrefetchStories from "@/components/PrefetchStories";
 
 type SearchParams = { [k: string]: string | undefined };
 
+type SearchResponse = {
+  data: any[];
+  mode?: "vector" | "text";
+  error?: string | null;
+};
+
 // Simple card (shared by feed + search results)
 function StoryCard({ s }: { s: any }) {
   return (
@@ -105,6 +111,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   // 7) Server-side call to /api/search (POST) if q is present
   let searchResults: any[] = [];
+  let searchMode: "vector" | "text" | undefined;
   if (hasQuery) {
     try {
       const res = await fetch(`${getOrigin()}/api/search`, {
@@ -113,14 +120,17 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         cache: "no-store",
         body: JSON.stringify({ q, k: 12 }),
       });
-      const j = await res.json();
+      const j = (await res.json()) as SearchResponse;
       if (res.ok && Array.isArray(j.data)) {
         searchResults = j.data;
+        searchMode = j.mode;
       } else {
         searchResults = [];
+        searchMode = undefined;
       }
     } catch {
       searchResults = [];
+      searchMode = undefined;
     }
   }
 
@@ -178,7 +188,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         <section className="space-y-3">
           <div className="flex items-baseline justify-between">
             <h3 className="text-lg font-semibold">Search results for “{q}”</h3>
-            <p className="text-xs text-neutral-500">Semantic + text fallback</p>
+            {/* Badge shows whether results came from vector or keyword path */}
+            <p className="text-xs text-neutral-500">
+              {searchMode === "vector" ? "AI semantic search" : "Keyword search"}
+            </p>
           </div>
 
           {searchResults.length > 0 ? (
