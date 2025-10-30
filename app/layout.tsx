@@ -4,9 +4,10 @@ import type { Metadata } from "next";
 import { clsx } from "clsx";
 import Link from "next/link";
 
-import NavUser from "@/components/NavUser";     // server component – safe in layout
+import NavUser from "@/components/NavUser";      // server component – safe in layout
 import PageviewPing from "@/components/PageviewPing";
 import Analytics from "@/components/Analytics";
+import Plausible from "@/components/Plausible";  // adds the Plausible snippet when env is set
 
 // Force dynamic rendering globally (prevents build-time prerender errors)
 export const dynamic = "force-dynamic";
@@ -41,19 +42,8 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN; // e.g., aikyanow.netlify.app
-
   return (
     <html lang="en">
-      <head>
-        {plausibleDomain ? (
-          <script
-            defer
-            data-domain={plausibleDomain}
-            src="https://plausible.io/js/script.js"
-          />
-        ) : null}
-      </head>
       <body className={clsx("min-h-screen bg-neutral-50")}>
         <header className="border-b bg-white/70 backdrop-blur">
           <div className="container flex items-center justify-between h-16">
@@ -75,10 +65,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
 
-        {/* pageview analytics ping (your existing lightweight beacon) */}
+        {/* lightweight beacon + analytics */}
         <PageviewPing />
-        {/* Sentry init (optional) happens inside; no-op if DSN not set */}
         <Analytics />
+        <Plausible /> {/* reads NEXT_PUBLIC_PLAUSIBLE_DOMAIN inside the component */}
 
         <main className="container py-6">{children}</main>
 
