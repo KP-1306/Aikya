@@ -2,62 +2,16 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import Avatar from "@/components/Avatar";
 
 type HeaderClientProps = {
   name: string | null;
   email: string | null;
   avatar_url: string | null;
 };
-
-// Util: get initials from name or fall back to email local-part
-function getInitials(name?: string | null, fallback?: string | null) {
-  const base = (name && name.trim()) || (fallback ? fallback.split("@")[0] : "");
-  if (!base) return "A";
-  const parts = base.split(/\s+/).filter(Boolean);
-  const init =
-    (parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[1]?.[0] ?? "" : "");
-  return init.toUpperCase() || "A";
-}
-
-// Simple avatar with image + initials fallback
-function Avatar({
-  name,
-  email,
-  src,
-  size = 32,
-}: {
-  name?: string | null;
-  email?: string | null;
-  src?: string | null;
-  size?: number;
-}) {
-  const [showImg, setShowImg] = useState(Boolean(src));
-  const initials = getInitials(name, email);
-  const px = `${size}px`;
-
-  return (
-    <div
-      className="relative inline-flex select-none items-center justify-center overflow-hidden rounded-full bg-emerald-600 text-white text-xs font-semibold"
-      style={{ width: px, height: px }}
-      aria-label={name || email || "User"}
-    >
-      {showImg && src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={name || email || "Avatar"}
-          className="h-full w-full rounded-full object-cover"
-          onError={() => setShowImg(false)}
-        />
-      ) : (
-        <span>{initials}</span>
-      )}
-    </div>
-  );
-}
 
 export default function HeaderClient({
   name,
@@ -67,18 +21,21 @@ export default function HeaderClient({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
-  async function onSignOut() {
+  const isAuthed = Boolean(email);
+  const displayName = useMemo(() => name || email || "Guest", [name, email]);
+
+  const onSignOut = async () => {
     try {
       setBusy(true);
       await supabase.auth.signOut();
       router.replace("/");
       router.refresh();
+    } catch {
+      // no-op; navigation still returns user to home
     } finally {
       setBusy(false);
     }
-  }
-
-  const displayName = name || email || "Guest";
+  };
 
   return (
     <header className="container mx-auto flex items-center justify-between py-4">
@@ -97,11 +54,24 @@ export default function HeaderClient({
           Contact
         </Link>
 
-        {email ? (
+        {isAuthed ? (
           <div className="flex items-center gap-3">
-            <span className="hidden sm:inline text-neutral-700">{displayName}</span>
-            <Avatar name={name} email={email} src={avatar_url} />
+            <span
+              className="hidden max-w-[160px] truncate text-neutral-700 sm:inline"
+              title={displayName}
+            >
+              {displayName}
+            </span>
+
+            <Avatar
+              name={name ?? undefined}
+              email={email ?? undefined}
+              src={avatar_url ?? undefined}
+              size={28}
+            />
+
             <button
+              type="button"
               onClick={onSignOut}
               disabled={busy}
               className="rounded-md border px-3 py-1 hover:bg-neutral-50 disabled:opacity-60"
