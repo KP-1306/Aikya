@@ -3,60 +3,43 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireSupabaseService } from "@/lib/supabase/service";
 
+export const runtime = "nodejs";
 
-export const runtime = "nodejs"; // ensure Node runtime
+async function isAdmin(sb: ReturnType<typeof supabaseServer>) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return false;
+  const { data: profile } = await sb.from("profiles").select("role").eq("id", user.id).single();
+  return profile?.role === "admin";
+}
 
 export async function POST(req: Request) {
-  try {
-    const { id } = (await req.json()) as { id?: string };
-    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-
-    const supabaseService = requireSupabaseService();
-
-    // Auth + admin check
-    const sb = supabaseServer();
-    const {
-      data: { user },
-    } = await sb.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { data: admin } = await sb
-      .from("admins")
-      .select("user_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-    // Helper: delete from a table by story_id, swallow individual errors
-    async function deleteByStoryId(table: string) {
-      try {
-        const { error } = await supabaseService.from(table).delete().eq("story_id", id);
-        if (error) {
-          // log but don't fail whole request
-          console.warn(`[delete/${table}]`, error.message);
-        }
-      } catch (e: any) {
-        console.warn(`[delete/${table}] unexpected`, e?.message || e);
-      }
-    }
-
-    // Delete children first (order matters if FKs don’t cascade)
-    await deleteByStoryId("comments");
-    await deleteByStoryId("likes");
-    await deleteByStoryId("saves");
-    // If you have a combined reactions table, keep this; otherwise it’s a no-op
-    await deleteByStoryId("reactions");
-    await deleteByStoryId("sources");
-
-    // Finally, delete the story itself
-    const { error: storyErr } = await supabaseService.from("stories").delete().eq("id", id);
-    if (storyErr) return NextResponse.json({ error: storyErr.message }, { status: 400 });
-
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message || "Server error" },
-      { status: 500 }
-    );
+  const sb = supabaseServer();
+  if (!(await isAdmin(sb))) {
+    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
+
+  const ctype = req.headers.get("content-type") || "";
+  let id = "", mode = "soft";
+  if (ctype.includes("application/json")) {
+    const j = await req.json().catch(() => ({}));
+    id = String(j.id || "");
+    mode = String(j.mode || "soft");
+  } else {
+    const fd = await req.formData();
+    id = String(fd.get("id") || "");
+    mode = String(fd.get("mode") || "soft");
+  }
+
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  if (!["soft","hard"].includes(mode)) mode = "soft";
+
+  const svc = requireSupabaseService();
+  const { error } = await svc.rpc("admin_delete_story", { story_id_in: id, mode_in: mode });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.redirect(new URL("/admin/(content)/drafts", req.url));
+}
+
+export async function GET() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }
