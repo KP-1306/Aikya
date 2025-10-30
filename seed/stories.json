@@ -1,0 +1,39 @@
+[
+  {
+    "slug": "delhi-teens-clean-yamuna-ghat",
+    "title": "Delhi teens lead weekend cleanups on Yamuna ghat",
+    "dek": "A student-led group removes 2 tons of waste in 3 weekends—now inviting schools to adopt a ghat.",
+    "what": "Weekend cleanup drives on the ghat with waste sorting",
+    "how": "Local students coordinate volunteers; MCD helps with pickup",
+    "why": "To reduce river pollution and build civic pride",
+    "life_lesson": "Small consistent actions beat occasional big gestures",
+    "city": "New Delhi",
+    "state": "Delhi",
+    "country": "India",
+    "hero_image": "https://images.example.com/yamuna-ghat-cleanup.jpg",
+    "read_minutes": 4,
+    "sources": [
+      "https://example.com/report/delhi-teens-cleanups"
+    ],
+    "is_published": true,
+    "published_at": "2025-10-01T10:00:00.000Z"
+  },
+  {
+    "slug": "pune-free-bicycle-library",
+    "title": "Pune’s free bicycle library opens to school kids",
+    "dek": "Community-run cycle bank lends refurbished bikes to students for the entire academic year.",
+    "what": "Refurbish & lend cycles to school children",
+    "how": "Volunteers repair donated bikes; sponsors cover parts",
+    "why": "Enable healthier commutes and improve attendance",
+    "life_lesson": "Access unlocks opportunity",
+    "city": "Pune",
+    "state": "Maharashtra",
+    "country": "India",
+    "hero_image": "https://images.example.com/pune-bicycle-library.jpg",
+    "read_minutes": 3,
+    "sources": [
+      "https://example.com/story/pune-bicycle-library"
+    ],
+    "is_published": true
+  }
+]
