@@ -2,9 +2,8 @@
 import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
-  // Prefer configured site URL; fallback to your Netlify domain.
-  const site =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+  const base =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ||
     "https://aikyanow.netlify.app";
 
   return {
@@ -12,11 +11,11 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        // If you ever need to hide areas from crawlers, add them here:
+        // If you need to restrict areas later, uncomment and adjust:
         // disallow: ["/admin", "/api/private"],
       },
     ],
-    sitemap: `${site}/sitemap.xml`,
-    host: site,
+    sitemap: `${base}/sitemap.xml`,
+    host: base,
   };
 }
