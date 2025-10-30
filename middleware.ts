@@ -5,29 +5,32 @@ import { NextResponse } from "next/server";
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Hard skip for routes that must not be touched by this middleware
+  // Hard-skip inside middleware (defense-in-depth; matcher already avoids these)
   if (
     pathname.startsWith("/auth/callback") || // Supabase exchange
-    pathname.startsWith("/signin") ||        // sign-in page
-    pathname.startsWith("/signup") ||        // sign-up page
-    pathname.startsWith("/api") ||           // APIs
-    pathname.startsWith("/_next") ||         // Next internals
-    pathname.startsWith("/favicon.ico") ||   // assets
-    pathname.startsWith("/robots.txt") ||
-    pathname.startsWith("/sitemap.xml")
+    pathname.startsWith("/signin") ||
+    pathname.startsWith("/signup") ||
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/_next") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml"
   ) {
     return NextResponse.next();
   }
 
   const res = NextResponse.next();
 
-  // Set anonymous id cookie only if missing
+  // Set anonymous id cookie only if missing (Edge-safe web crypto)
   if (!req.cookies.get("aid")?.value) {
     const anonId =
       globalThis.crypto?.randomUUID?.() ??
       `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-    res.cookies.set("aid", anonId, {
+    // Use object form; note sameSite must be lowercase 'lax' for types
+    res.cookies.set({
+      name: "aid",
+      value: anonId,
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
@@ -39,12 +42,12 @@ export function middleware(req: NextRequest) {
   return res;
 }
 
-// Only run on pages that need the anon cookie; avoid everything else
+// Only run where we need the anon cookie; DO NOT include auth/api/_next here.
 export const config = {
   matcher: [
-    "/",                // home/feed
-    "/story/:path*",    // story pages
-    "/account/:path*",  // account (if you want)
-    // add others if needed, but DO NOT include /auth/callback here
+    "/",               // home / feed
+    "/story/:path*",   // story pages
+    "/account/:path*", // account
+    "/coach/:path*",   // karma coach
   ],
 };
