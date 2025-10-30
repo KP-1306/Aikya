@@ -1,24 +1,28 @@
 // app/admin/(content)/page.tsx
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase/server";
 
-export const metadata = { title: "Admin — Aikya" };
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-async function ensureAdmin() {
+export const metadata: Metadata = {
+  title: "Admin · Content — Aikya",
+  description: "Admin landing for content tools.",
+};
+
+async function requireAdmin() {
   const sb = supabaseServer();
   const {
     data: { user },
   } = await sb.auth.getUser();
   if (!user) redirect("/signin");
 
-  // Prefer the is_admin() RPC if present; fallback to profiles.role
-  try {
-    const { data } = await sb.rpc("is_admin").single();
-    if (data === true) return;
-  } catch {
-    // ignore and try fallback
-  }
+  // Prefer RPC if you created it; otherwise fall back to profiles.role
+  const rpc = await sb.rpc("is_admin").single().catch(() => ({ data: null as null | boolean }));
+  if (rpc?.data === true) return;
+
   const { data: prof } = await sb
     .from("profiles")
     .select("role")
@@ -28,41 +32,92 @@ async function ensureAdmin() {
   if (prof?.role !== "admin") redirect("/");
 }
 
-export default async function AdminHome() {
-  await ensureAdmin();
+function Card({
+  href,
+  title,
+  desc,
+}: {
+  href: string;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="card p-4 hover:ring-1 hover:ring-black/10 transition"
+    >
+      <div className="text-lg font-semibold">{title}</div>
+      <p className="text-sm text-neutral-600">{desc}</p>
+    </Link>
+  );
+}
 
-  const tiles: Array<{ href: string; title: string; sub: string }> = [
-    { href: "/admin/drafts",      title: "Drafts",      sub: "Review & publish story drafts" },
-    { href: "/admin/flags",       title: "Flags",       sub: "Handle flagged comments/stories" },
-    { href: "/admin/moderation",  title: "Moderation",  sub: "Approve/hide comments, ban users" },
-    { href: "/admin/stories",     title: "Stories",     sub: "Browse, edit, or delete stories" },
-    { href: "/admin/acts",        title: "Proof-of-Good", sub: "Verify submitted good acts" },
-    { href: "/admin/support",     title: "Support",     sub: "Review Support Engine actions" },
-    { href: "/admin/ingest",      title: "Ingest",      sub: "Normalize articles & run preview" },
-    { href: "/admin/analytics",   title: "Analytics",   sub: "Traffic & engagement snapshots" },
-    { href: "/admin/partners",    title: "Partners",    sub: "Manage partner properties" },
-  ];
+export default async function AdminContentHome() {
+  await requireAdmin();
 
   return (
     <div className="container py-8 space-y-6">
       <header>
-        <h1 className="text-2xl font-bold">Admin</h1>
+        <h1 className="text-2xl font-bold">Admin · Content</h1>
         <p className="text-sm text-neutral-600">
-          Quick links to moderation, publishing, and operational tools.
+          Create, review and moderate Aikya content. Shortcuts below.
         </p>
       </header>
 
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {tiles.map((t) => (
-          <li key={t.href} className="card p-4 hover:ring-1 hover:ring-black/5 transition">
-            <Link href={t.href} className="block">
-              <h2 className="font-semibold">{t.title}</h2>
-              <p className="text-sm text-neutral-600 mt-1">{t.sub}</p>
-              <span className="inline-block text-sm mt-3 underline">Open</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Card
+          href="/admin/(content)/acts"
+          title="Good Acts"
+          desc="Verify & manage Proof-of-Good submissions."
+        />
+        <Card
+          href="/admin/drafts"
+          title="Drafts"
+          desc="Work on story drafts, copy and assets."
+        />
+        <Card
+          href="/admin/flags"
+          title="Flags"
+          desc="See flagged items that need attention."
+        />
+        <Card
+          href="/admin/moderation"
+          title="Moderation"
+          desc="Approve, hide or ban users based on reports."
+        />
+        <Card
+          href="/admin/stories"
+          title="Stories"
+          desc="Publish, unpublish and manage stories."
+        />
+        <Card
+          href="/admin/analytics"
+          title="Analytics"
+          desc="Quick engagement and reach snapshots."
+        />
+        <Card
+          href="/admin/ingest"
+          title="Ingest / Curation"
+          desc="Seed, import or curate sources for Aikya."
+        />
+        <Card
+          href="/admin/partners"
+          title="Partners"
+          desc="Property/partner management (contacts & status)."
+        />
+        <Card
+          href="/admin/support"
+          title="Support Engine"
+          desc="Configure action types, review queue, karma rules."
+        />
+
+        {/* New: Weekly Digest preview (opens HTML preview; sending handled by Netlify function) */}
+        <Card
+          href="/api/admin/digest/preview"
+          title="Weekly Digest (Preview)"
+          desc="Preview this week’s email. Sending runs via Netlify function if email keys are set."
+        />
+      </section>
     </div>
   );
 }
