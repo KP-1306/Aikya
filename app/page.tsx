@@ -4,21 +4,60 @@ import Image from "next/image";
 
 import { getStories } from "@/lib/data";
 import { getCurrentUserRegion } from "@/lib/user";
-
 import FeedToggle from "@/components/FeedToggle";
 import LocalSetupBanner from "@/components/LocalSetupBanner";
-
-// Personalized recs (state + popularity); add lib/recs.ts from earlier step.
 import { getRecommendations } from "@/lib/recs";
 import { supabaseServer } from "@/lib/supabase/server";
 
 type SearchParams = { [k: string]: string | undefined };
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+// Simple card (shared by feed + search results)
+function StoryCard({ s }: { s: any }) {
+  return (
+    <li key={s.slug ?? s.id} className="card overflow-hidden">
+      <Link href={`/story/${s.slug}`} className="block">
+        <div className="relative w-full aspect-[16/9] bg-neutral-100">
+          {s.hero_image && (
+            <Image
+              src={s.hero_image}
+              alt={s.title}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, 33vw"
+            />
+          )}
+        </div>
+        <div className="p-4">
+          <div className="text-xs text-neutral-500">
+            {(s.city || s.state || s.country) ?? "—"} • {s.read_minutes ?? 3} min
+          </div>
+          <h3 className="mt-1 font-semibold line-clamp-2">{s.title}</h3>
+          {s.dek && (
+            <p className="text-sm text-neutral-600 line-clamp-2 mt-1">{s.dek}</p>
+          )}
+        </div>
+      </Link>
+    </li>
+  );
+}
+
+// Build an origin for server-side fetch to /api/search
+function getOrigin() {
+  // Prefer explicit site URL if you’ve set it
+  const explicit = process.env.NEXT_PUBLIC_SITE_URL;
+  if (explicit) return explicit.replace(/\/+$/, "");
+  // Vercel env var exposes domain without protocol
+  const vercel = process.env.VERCEL_URL;
+  if (vercel) return `https://${vercel}`;
+  // Local fallback
+  return "http://localhost:3000";
+}
+
+export default async function Home({ searchParams }: { searchParams: SearchParams }) {
+  // 0) Optional search query (from GET ?q=)
+  const q = (searchParams.q ?? "").trim();
+  const hasQuery = q.length > 0;
+
   // 1) Region info (from your helper)
   const profile = await getCurrentUserRegion();
   const hasCity = !!profile?.city;
@@ -34,19 +73,21 @@ export default async function Home({
   const state = mode === "state" && hasState ? profile!.state : undefined;
 
   // 4) Main feed stories
-  const items = await getStories({ city, state, limit: 24 });
+  const items = (await getStories({ city, state, limit: 24 })) ?? [];
 
   // 5) Personalized rail — uses user + (fallback) state
   const sb = supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
-  const recs = await getRecommendations({
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  const recs = (await getRecommendations({
     userId: user?.id,
     state: profile?.state,
     limit: 6,
-  });
+  })) as any[];
 
   // avoid showing duplicates between main grid and recs
-  const seen = new Set((items ?? []).map((s: any) => s.slug));
+  const seen = new Set(items.map((s: any) => s.slug));
   const uniqueRecs = (recs ?? []).filter((r: any) => !seen.has(r.slug));
 
   // 6) Headings
@@ -64,59 +105,129 @@ export default async function Home({
       ? "Stories prioritized from your state. Switch to City or All anytime."
       : "Uplifting stories from across India. Set your City/State to personalize.";
 
+  // 7) Server-side call to /api/search (POST) if q is present
+  let searchResults: any[] = [];
+  if (hasQuery) {
+    try {
+      const res = await fetch(`${getOrigin()}/api/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Keep search always fresh in dev; you can change to { cache: "no-store" }
+        // to avoid caching in prod too.
+        cache: "no-store",
+        body: JSON.stringify({ q, k: 12 }),
+      });
+      const j = await res.json();
+      if (res.ok && Array.isArray(j.data)) {
+        searchResults = j.data;
+      } else {
+        searchResults = [];
+      }
+    } catch {
+      searchResults = [];
+    }
+  }
+
   return (
     <div className="container space-y-8">
-      {/* Top header with mode toggle */}
-      <header className="flex items-center justify-between">
+      {/* Top header with mode toggle + Search */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">{heading}</h2>
           <p className="text-sm text-neutral-600">{sub}</p>
         </div>
-        <FeedToggle hasCity={hasCity} hasState={hasState} />
+
+        {/* Simple GET search (keeps URL shareable). Preserves current mode via hidden input. */}
+        <form method="GET" className="flex items-center gap-2 w-full sm:w-auto">
+          <input
+            type="hidden"
+            name="mode"
+            value={mode}
+            aria-hidden="true"
+          />
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Search uplifting stories…"
+            className="input w-full sm:w-80"
+            aria-label="Search stories"
+          />
+          <button className="btn" type="submit">
+            Search
+          </button>
+          {hasQuery && (
+            <Link
+              href={mode ? `/?mode=${mode}` : "/"}
+              className="text-sm text-neutral-500 underline whitespace-nowrap"
+              aria-label="Clear search"
+            >
+              Clear
+            </Link>
+          )}
+        </form>
+
+        {/* Region toggle on the far right (on larger screens) */}
+        <div className="sm:ml-6">
+          <FeedToggle hasCity={hasCity} hasState={hasState} />
+        </div>
       </header>
 
       {/* Hint to encourage setting location */}
       {!(hasCity || hasState) && <LocalSetupBanner />}
 
-      {/* Main feed grid */}
-      <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {items.map((s: any) => (
-          <li key={s.slug} className="card overflow-hidden">
-            <Link href={`/story/${s.slug}`} className="block">
-              <div className="relative w-full aspect-[16/9] bg-neutral-100">
-                {s.hero_image && (
-                  <Image
-                    src={s.hero_image}
-                    alt={s.title}
-                    fill
-                    className="object-cover"
-                  />
-                )}
-              </div>
-              <div className="p-4">
-                <div className="text-xs text-neutral-500">
-                  {(s.city || s.state || s.country) ?? "—"} •{" "}
-                  {s.read_minutes ?? 3} min
-                </div>
-                <h3 className="mt-1 font-semibold line-clamp-2">{s.title}</h3>
-                <p className="text-sm text-neutral-600 line-clamp-2 mt-1">
-                  {s.dek}
-                </p>
-              </div>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {/* Search results (if any) */}
+      {hasQuery && (
+        <section className="space-y-3">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-lg font-semibold">
+              Search results for “{q}”
+            </h3>
+            <p className="text-xs text-neutral-500">Semantic + text fallback</p>
+          </div>
 
-      {items.length === 0 && (
-        <div className="text-sm text-neutral-500">
-          No stories yet for this view. Try switching to{" "}
-          <a className="underline" href="/?mode=all">
-            All
-          </a>
-          .
-        </div>
+          {searchResults.length > 0 ? (
+            <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {searchResults.map((s: any) => (
+                <StoryCard key={s.slug ?? s.id} s={s} />
+              ))}
+            </ul>
+          ) : (
+            <div className="text-sm text-neutral-500">
+              No matches found. Try different keywords or{" "}
+              <Link href={mode ? `/?mode=${mode}` : "/"} className="underline">
+                browse recent stories
+              </Link>
+              .
+            </div>
+          )}
+        </section>
       )}
+
+      {/* Main feed grid */}
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-lg font-semibold">Featured in this view</h3>
+          <p className="text-xs text-neutral-500">
+            Region: {mode.toUpperCase()}
+          </p>
+        </div>
+
+        {items.length > 0 ? (
+          <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {items.map((s: any) => (
+              <StoryCard key={s.slug} s={s} />
+            ))}
+          </ul>
+        ) : (
+          <div className="text-sm text-neutral-500">
+            No stories yet for this view. Try switching to{" "}
+            <a className="underline" href="/?mode=all">
+              All
+            </a>
+            .
+          </div>
+        )}
+      </section>
 
       {/* Personalized rail (optional, only when we have recs) */}
       {uniqueRecs.length > 0 && (
@@ -133,12 +244,13 @@ export default async function Home({
             {uniqueRecs.map((r: any) => (
               <Link key={r.id} href={`/story/${r.slug}`} className="card overflow-hidden">
                 {r.hero_image && (
-                  <div className="relative aspect-[16/9]">
+                  <div className="relative aspect-[16/9] bg-neutral-100">
                     <Image
                       src={r.hero_image}
                       alt={r.title}
                       fill
                       className="object-cover"
+                      sizes="(max-width: 768px) 100vw, 33vw"
                     />
                   </div>
                 )}
