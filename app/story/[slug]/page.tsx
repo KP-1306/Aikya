@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import dynamic from "next/dynamic";
+import NextDynamic from "next/dynamic";
 import { notFound } from "next/navigation";
 
 import { requireSupabaseService } from "@/lib/supabase/service";
@@ -10,6 +10,8 @@ import { getReactions } from "@/lib/reactions";
 
 // Client-only Proof-of-Good panel
 const ProofPanel = dynamic(() => import("@/components/ProofPanel"), { ssr: false });
+
+const ProofPanel = NextDynamic(() => import("@/components/ProofPanel"), { ssr: false });
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
