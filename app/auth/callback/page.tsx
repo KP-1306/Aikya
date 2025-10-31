@@ -1,4 +1,3 @@
-// app/auth/callback/page.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -17,53 +16,61 @@ export default function CallbackPage() {
   useEffect(() => {
     (async () => {
       try {
-        const redirectTo = search.get("redirectTo") || "/";
-
-        // (A) Provider or magic-link error (either in query or hash)
-        const hash = typeof window !== "undefined" ? window.location.hash.replace(/^#/, "") : "";
-        const hp = new URLSearchParams(hash);
-        const err =
-          search.get("error") ||
-          search.get("error_description") ||
-          hp.get("error") ||
-          hp.get("error_description");
-        if (err) {
-          router.replace(`/signin?error=${encodeURIComponent(err)}`);
+        // 0) If provider sent an error
+        const qpErr = search.get("error") || search.get("error_description");
+        if (qpErr) {
+          router.replace(`/auth/signin?error=${encodeURIComponent(qpErr)}`);
           return;
         }
 
-        // (B) Modern PKCE / OAuth / magic-link (code in the query)
+        // 1) Preferred: let supabase parse the URL and complete the session
+        //    Works for PKCE (code+verifier) and for legacy hash links.
+        try {
+          const { data, error } = await supabase.auth.getSessionFromUrl({
+            storeSession: true,
+          });
+          if (!error && data?.session) {
+            const to = search.get("redirectTo") || "/";
+            router.replace(to);
+            return;
+          }
+        } catch {
+          // fall through to manual paths below
+        }
+
+        // 2) Manual PKCE fallback (some older @supabase/supabase-js versions)
         const code = search.get("code");
         if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code); // <-- string, not object
-          if (error) {
-            router.replace(`/signin?error=${encodeURIComponent(error.message)}`);
+          // Some versions expect a string; others accept { code } — try string:
+          const { error } = await supabase.auth.exchangeCodeForSession(code as string);
+          if (!error) {
+            const to = search.get("redirectTo") || "/";
+            router.replace(to);
             return;
           }
-          router.replace(redirectTo);
-          return;
         }
 
-        // (C) Legacy hash-token email links (older format)
-        const access_token = hp.get("access_token");
-        const refresh_token = hp.get("refresh_token") ?? "";
+        // 3) Legacy hash-token fallback (very old magic links)
+        const hash = typeof window !== "undefined" ? window.location.hash.replace(/^#/, "") : "";
+        const sp = new URLSearchParams(hash);
+        const access_token = sp.get("access_token");
+        const refresh_token = sp.get("refresh_token") ?? "";
         if (access_token) {
           const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-          if (error) {
-            router.replace(`/signin?error=${encodeURIComponent(error.message)}`);
+          if (!error) {
+            const to = search.get("redirectTo") || "/";
+            router.replace(to);
             return;
           }
-          router.replace(redirectTo);
-          return;
         }
 
-        // (D) Nothing usable present
+        // 4) Nothing usable → bounce to sign-in
         router.replace(
-          "/signin?error=" +
-            encodeURIComponent("No auth credentials found. Please sign in again.")
+          "/auth/signin?error=" +
+            encodeURIComponent("No auth credentials found. Please request a new link.")
         );
       } catch (e: any) {
-        router.replace("/signin?error=" + encodeURIComponent(e?.message || "Unexpected error"));
+        router.replace("/auth/signin?error=" + encodeURIComponent(e?.message || "Unexpected error"));
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,7 +81,7 @@ export default function CallbackPage() {
       <h1>Signing you in…</h1>
       <p>
         You’ll be redirected automatically. If not,{" "}
-        <a href="/signin">continue to sign in</a>.
+        <a href="/auth/signin">continue to sign in</a>.
       </p>
     </main>
   );
