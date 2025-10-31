@@ -67,26 +67,25 @@ function getOrigin() {
   return "http://localhost:3000";
 }
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   // 0) Optional search query (from GET ?q=)
   const q = (searchParams.q ?? "").trim();
   const hasQuery = q.length > 0;
 
-  // 1) Region info
+  // 1) Region info from profile
   const profile = await getCurrentUserRegion();
   const hasCity = !!profile?.city;
   const hasState = !!profile?.state;
 
-  // 2) Requested mode vs effective mode
+  // Optional URL overrides (browse without saving to profile)
+  const cityOverride = (searchParams.city ?? "").trim() || undefined;
+  const stateOverride = (searchParams.state ?? "").trim() || undefined;
+
+  // 2) Requested mode vs effective mode (auto-fallback when profile missing)
   const requested =
     (searchParams.mode as "city" | "state" | "all" | undefined) ??
     (hasCity ? "city" : hasState ? "state" : "all");
 
-  // Auto-fallback so “city/state” doesn’t accidentally show ALL when user hasn’t set location
   const mode: "city" | "state" | "all" =
     requested === "city" && !hasCity
       ? hasState
@@ -98,9 +97,16 @@ export default async function Home({
         : "all"
       : requested;
 
-  // 3) Filters for main feed
-  const city = mode === "city" && hasCity ? profile!.city : undefined;
-  const state = mode === "state" && hasState ? profile!.state : undefined;
+  // 3) Filters for main feed (use URL override if present)
+  const city =
+    mode === "city"
+      ? cityOverride ?? (hasCity ? profile!.city : undefined)
+      : undefined;
+
+  const state =
+    mode === "state"
+      ? stateOverride ?? (hasState ? profile!.state : undefined)
+      : undefined;
 
   // 4) Main feed stories
   const items = (await getStories({ city, state, limit: 24 })) ?? [];
@@ -123,17 +129,17 @@ export default async function Home({
 
   // 6) Headings
   const heading =
-    mode === "city" && city
-      ? `Good around you in ${city}`
-      : mode === "state" && state
-      ? `Good around you in ${state}`
+    mode === "city" && (city ?? profile?.city)
+      ? `Good around you in ${city ?? profile?.city}`
+      : mode === "state" && (state ?? profile?.state)
+      ? `Good around you in ${state ?? profile?.state}`
       : "Latest good around India";
 
   const sub =
-    mode === "city" && city
-      ? "Stories prioritized from your city. Switch to State or All anytime."
-      : mode === "state" && state
-      ? "Stories prioritized from your state. Switch to City or All anytime."
+    mode === "city"
+      ? "Stories prioritized from your chosen city. Switch mode or browse another city."
+      : mode === "state"
+      ? "Stories prioritized from your chosen state. Switch mode or browse another state."
       : "Uplifting stories from across India. Set your City/State to personalize.";
 
   // 7) Server-side call to /api/search (POST) if q is present
@@ -153,7 +159,7 @@ export default async function Home({
         searchMode = j.mode;
       }
     } catch {
-      // swallow – show empty state below
+      // swallow – empty state below
     }
   }
 
@@ -164,15 +170,15 @@ export default async function Home({
   ];
   const prefetchList = Array.from(new Set(prefetchHrefs));
 
-  // Derived label for the main grid
+  // Derived labels
   const regionLabel =
     mode === "city" ? "CITY" : mode === "state" ? "STATE" : "ALL";
 
   const mainTitle =
-    mode === "city" && city
-      ? `Stories in ${city}`
-      : mode === "state" && state
-      ? `Stories in ${state}`
+    mode === "city" && (city ?? profile?.city)
+      ? `Stories in ${city ?? profile?.city}`
+      : mode === "state" && (state ?? profile?.state)
+      ? `Stories in ${state ?? profile?.state}`
       : "Latest from across India";
 
   return (
@@ -188,9 +194,17 @@ export default async function Home({
             <p className="text-sm text-neutral-600">{sub}</p>
           </div>
 
-          {/* Search (GET) – preserves mode via hidden input (polished UI) */}
+          {/* Search (GET) – preserves mode via hidden input */}
           <form method="GET" className="w-full sm:w-auto">
             <input type="hidden" name="mode" value={mode} aria-hidden="true" />
+            {/* Keep any browsing override in the URL when searching */}
+            {mode === "city" && city && (
+              <input type="hidden" name="city" value={city} />
+            )}
+            {mode === "state" && state && (
+              <input type="hidden" name="state" value={state} />
+            )}
+
             <div className="flex items-center gap-2">
               <div className="relative flex-1 sm:w-80">
                 <input
@@ -227,9 +241,35 @@ export default async function Home({
             </div>
           </form>
 
-          {/* Region toggle */}
-          <div className="sm:ml-6">
+          {/* Region toggle + quick browse (doesn't change profile) */}
+          <div className="sm:ml-6 flex flex-col gap-2">
             <FeedToggle hasCity={hasCity} hasState={hasState} />
+            {mode !== "all" && (
+              <form method="GET" className="flex items-center gap-2">
+                <input type="hidden" name="mode" value={mode} />
+                {mode === "city" && (
+                  <input
+                    name="city"
+                    className="input w-40"
+                    placeholder="Browse city…"
+                    defaultValue={cityOverride ?? ""}
+                    aria-label="Browse by city"
+                  />
+                )}
+                {mode === "state" && (
+                  <input
+                    name="state"
+                    className="input w-40"
+                    placeholder="Browse state…"
+                    defaultValue={stateOverride ?? ""}
+                    aria-label="Browse by state"
+                  />
+                )}
+                <button className="btn" type="submit">
+                  Apply
+                </button>
+              </form>
+            )}
           </div>
         </header>
 
