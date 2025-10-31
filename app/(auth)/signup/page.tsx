@@ -3,22 +3,35 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
 export default function SignUpPage() {
+  const q = useSearchParams();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState<null | "password" | "magic">(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // Where Supabase will redirect after email confirmation / magic link
-  const redirectTo = useMemo(() => {
-    const base =
-      process.env.NEXT_PUBLIC_SITE_URL ??
-      (typeof window !== "undefined" ? window.location.origin : "");
-    return `${base}/callback`;
-  }, []);
+  // Where to send the user AFTER the callback succeeds
+  const redirectAfter = useMemo(() => q.get("redirectTo") || "/", [q]);
+
+  // Absolute origin for email redirect (env → window fallback)
+  const origin = useMemo(
+    () =>
+      (process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "")) ||
+      (typeof window !== "undefined" ? window.location.origin : ""),
+    []
+  );
+
+  // The URL Supabase should open from the email → our callback page
+  // The callback will exchange the code and then forward to redirectAfter.
+  const emailRedirectTo = useMemo(
+    () => `${origin}/auth/callback?redirectTo=${encodeURIComponent(redirectAfter)}`,
+    [origin, redirectAfter]
+  );
 
   async function onPasswordSignup(e: React.FormEvent) {
     e.preventDefault();
@@ -27,9 +40,9 @@ export default function SignUpPage() {
     setLoading("password");
 
     const { error } = await supabase.auth.signUp({
-      email,
+      email: email.trim().toLowerCase(),
       password,
-      options: { emailRedirectTo: redirectTo },
+      options: { emailRedirectTo }, // confirm email → returns to /auth/callback
     });
 
     setLoading(null);
@@ -43,10 +56,12 @@ export default function SignUpPage() {
     setMsg(null);
     setLoading("magic");
 
-    // This will create the user after they click the link
     const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: redirectTo },
+      email: email.trim().toLowerCase(),
+      options: {
+        emailRedirectTo,        // land on /auth/callback, then forward to redirectAfter
+        shouldCreateUser: true, // allow creating the user from the link
+      },
     });
 
     setLoading(null);
@@ -133,7 +148,7 @@ export default function SignUpPage() {
 
       <p className="mt-6 text-sm text-neutral-600">
         Already have an account?{" "}
-        <Link href="/signin" className="underline">
+        <Link href={`/signin?redirectTo=${encodeURIComponent(redirectAfter)}`} className="underline">
           Sign in
         </Link>
       </p>
