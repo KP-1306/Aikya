@@ -75,16 +75,12 @@ export async function POST(req: Request) {
     // Karma (best-effort)
     if (saved) {
       try {
-        // FIX: awardKarma expects 4–5 args → include a points value (e.g., +1)
-        await awardKarma(user.id, "save", 1, { storyId });
+        // 4th arg must match KarmaReason type → use snake_case
+        await awardKarma(user.id, "save", 1, { story_id: storyId });
       } catch {
         // ignore karma errors
       }
     }
-    // (Optional) if you want to penalize unsave:
-    // else {
-    //   try { await awardKarma(user.id, "unsave", -1, { storyId }); } catch {}
-    // }
 
     return NextResponse.json({ saved, saveCount });
   } catch (e: any) {
