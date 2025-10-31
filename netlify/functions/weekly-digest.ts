@@ -1,13 +1,12 @@
 // netlify/functions/weekly-digest.ts
-// Schedules: run manually or via Netlify Scheduled Functions (UI).
-// Safe: if RESEND_API_KEY (or provider) isn't set, it will no-op and exit 0.
+// Runs via Netlify Functions (or on-demand). No compile-time dependency on @netlify/functions.
 
-import type { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 
 const SITE =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ||
-  "https://aikyanow.netlify.app";
+  (process.env.NEXT_PUBLIC_SUPABASE_SITE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    "https://aikyanow.netlify.app").replace(/\/+$/, "");
 
 // --- Email provider (dynamic / optional) ---
 async function sendEmail(options: {
@@ -24,7 +23,10 @@ async function sendEmail(options: {
     return { ok: true, skipped: true };
   }
 
-  const { Resend } = await import("resend");
+  // Dynamic import → won’t break builds if package isn’t installed
+  const { Resend } = await import("resend").catch(() => ({ Resend: null as any }));
+  if (!Resend) return { ok: true, skipped: true };
+
   const resend = new Resend(resendKey);
   await resend.emails.send({
     from,
@@ -37,13 +39,14 @@ async function sendEmail(options: {
 
 // --- Supabase (service) ---
 function svc() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const url =
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
   if (!url || !key) throw new Error("Supabase env missing");
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-// --- HTML template (simple, inline styles) ---
+// --- HTML template ---
 function digestHtml({
   weekRange,
   items,
@@ -87,13 +90,12 @@ function digestHtml({
 </html>`;
 }
 
-// --- Handler ---
-export const handler: Handler = async () => {
+// --- Handler (no types) ---
+export const handler = async () => {
   try {
-    // Allow running with *only* service key set; email is optional.
     const supa = svc();
 
-    // Top 8 published in the last 7 days, sorted by recent + light popularity
+    // Top 8 in last 7 days
     const { data, error } = await supa
       .from("stories")
       .select("slug,title,dek,state,city,published_at,like_count")
@@ -116,29 +118,32 @@ export const handler: Handler = async () => {
       })) || [];
 
     if (items.length === 0) {
-      console.log("[weekly-digest] No recent items. Exiting.");
       return { statusCode: 200, body: "No items" };
     }
-
-    // recipients: keep it simple — env var CSV
-    const rawTo = process.env.DIGEST_TO || "";
-    const to = rawTo
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean);
 
     const end = new Date();
     const start = new Date(Date.now() - 7 * 864e5);
     const fmt = (d: Date) =>
-      d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" });
+      d.toLocaleDateString("en-IN", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+      });
 
     const html = digestHtml({
       weekRange: `${fmt(start)} – ${fmt(end)}`,
       items,
     });
 
+    // recipients via env
+    const rawTo = process.env.DIGEST_TO || "";
+    const to = rawTo
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
     if (to.length === 0) {
-      console.log("[weekly-digest] DIGEST_TO not set — preview only.");
+      // Preview only
       return {
         statusCode: 200,
         headers: { "content-type": "text/html; charset=UTF-8" },
@@ -148,7 +153,7 @@ export const handler: Handler = async () => {
 
     const res = await sendEmail({
       to,
-      subject: "Aikya · Weekly Digest",
+      subject: `Aikya · Weekly Digest (${fmt(start)} – ${fmt(end)})`,
       html,
       from: process.env.DIGEST_FROM || "Aikya Weekly <no-reply@aikya.local>",
     });
@@ -158,7 +163,6 @@ export const handler: Handler = async () => {
       body: JSON.stringify({ ok: true, skipped: !!res.skipped, count: items.length }),
     };
   } catch (e: any) {
-    console.error("[weekly-digest] Error:", e?.message || e);
     return { statusCode: 500, body: e?.message || "Weekly digest failed" };
   }
 };
