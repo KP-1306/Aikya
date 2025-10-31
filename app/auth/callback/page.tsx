@@ -1,3 +1,4 @@
+// app/auth/callback/page.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -16,61 +17,59 @@ export default function CallbackPage() {
   useEffect(() => {
     (async () => {
       try {
-        // 0) If provider sent an error
+        // (0) If the provider sent an error in the querystring
         const qpErr = search.get("error") || search.get("error_description");
         if (qpErr) {
           router.replace(`/auth/signin?error=${encodeURIComponent(qpErr)}`);
           return;
         }
 
-        // 1) Preferred: let supabase parse the URL and complete the session
-        //    Works for PKCE (code+verifier) and for legacy hash links.
-        try {
-          const { data, error } = await supabase.auth.getSessionFromUrl({
-            storeSession: true,
-          });
-          if (!error && data?.session) {
-            const to = search.get("redirectTo") || "/";
-            router.replace(to);
-            return;
-          }
-        } catch {
-          // fall through to manual paths below
-        }
-
-        // 2) Manual PKCE fallback (some older @supabase/supabase-js versions)
+        // (1) PKCE / OTP (new links): /auth/callback?code=...
         const code = search.get("code");
         if (code) {
-          // Some versions expect a string; others accept { code } — try string:
-          const { error } = await supabase.auth.exchangeCodeForSession(code as string);
-          if (!error) {
-            const to = search.get("redirectTo") || "/";
-            router.replace(to);
-            return;
-          }
+          const { error } = await supabase.auth.exchangeCodeForSession(code); // v2 API
+          if (error) throw error;
+
+          // Clean ?code and other auth params from the URL
+          const url = new URL(window.location.href);
+          url.searchParams.delete("code");
+          url.searchParams.delete("redirectTo");
+          window.history.replaceState({}, "", url.toString());
+
+          const to = (search.get("redirectTo") as string) || "/";
+          router.replace(to);
+          return;
         }
 
-        // 3) Legacy hash-token fallback (very old magic links)
-        const hash = typeof window !== "undefined" ? window.location.hash.replace(/^#/, "") : "";
+        // (2) Legacy hash magic link: /auth/callback#access_token=...&refresh_token=...
+        const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
         const sp = new URLSearchParams(hash);
         const access_token = sp.get("access_token");
         const refresh_token = sp.get("refresh_token") ?? "";
+
         if (access_token) {
           const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-          if (!error) {
-            const to = search.get("redirectTo") || "/";
-            router.replace(to);
-            return;
-          }
+          if (error) throw error;
+
+          // Clean the hash
+          const url = new URL(window.location.href);
+          url.hash = "";
+          window.history.replaceState({}, "", url.toString());
+
+          const to = (search.get("redirectTo") as string) || "/";
+          router.replace(to);
+          return;
         }
 
-        // 4) Nothing usable → bounce to sign-in
+        // (3) Nothing usable → bounce to sign-in
         router.replace(
           "/auth/signin?error=" +
             encodeURIComponent("No auth credentials found. Please request a new link.")
         );
       } catch (e: any) {
-        router.replace("/auth/signin?error=" + encodeURIComponent(e?.message || "Unexpected error"));
+        router.replace(
+          "/auth/signin?error=" + encodeURIComponent(e?.message || "Auth callback failed")
+        );
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
