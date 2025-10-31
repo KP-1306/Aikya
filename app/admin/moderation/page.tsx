@@ -9,56 +9,73 @@ export const metadata = {
 };
 
 async function isAdmin() {
-  const sb = supabaseServer();
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
+  const sb: any = supabaseServer(); // cast avoids “.from is not callable” union issue on Netlify
+  const { data: userRes } = await sb.auth.getUser();
+  const user = userRes?.user;
   if (!user) return { ok: false };
 
-  // Prefer RPC if present
+  // Prefer RPC if present (tolerate different shapes)
   try {
-    const { data, error } = await sb.rpc("is_admin").single();
-    if (!error && data === true) return { ok: true };
+    const { data: rpcData } = await sb.rpc("is_admin");
+    const rpcBool =
+      rpcData === true ||
+      rpcData === "t" ||
+      (rpcData && typeof rpcData === "object" && (rpcData.is_admin === true || rpcData.is_admin === "t"));
+    if (rpcBool) return { ok: true };
   } catch {
-    /* ignore and fall back */
+    /* ignore */
   }
 
-  // Fallback to profiles.role
-  const { data: prof } = await sb
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  return { ok: prof?.role === "admin" };
+  // Fallback to profiles.role (or user_profiles.role if you prefer)
+  try {
+    const { data: prof } = await sb
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    return { ok: prof?.role === "admin" || prof?.role === "owner" };
+  } catch {
+    return { ok: false };
+  }
 }
 
 export default async function ModerationPage() {
-  const sb = supabaseServer();
+  const sb: any = supabaseServer();
 
   // Auth + Admin gate
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
+  const { data: userRes } = await sb.auth.getUser();
+  const user = userRes?.user;
   if (!user) redirect("/signin");
 
   const { ok } = await isAdmin();
   if (!ok) redirect("/");
 
-  // "Pending" = comments hidden by auto/moderation, awaiting review
-  const { data: pendingRaw, error: pendErr } = await sb
-    .from("comments")
-    .select("id, story_id, user_id, body, created_at, status, flags")
-    .eq("status", "hidden")
-    .order("created_at", { ascending: false });
+  // Pending: comments hidden by moderation awaiting review
+  let pendingRaw: any[] | null = null;
+  try {
+    const { data } = await sb
+      .from("comments")
+      .select("id, story_id, user_id, body, created_at, status, flags")
+      .eq("status", "hidden")
+      .order("created_at", { ascending: false });
+    pendingRaw = data ?? [];
+  } catch {
+    pendingRaw = [];
+  }
 
-  // "Flagged" = flags > 0 (regardless of status, but usually visible)
-  const { data: flaggedRaw, error: flagErr } = await sb
-    .from("comments")
-    .select("id, story_id, user_id, body, created_at, status, flags")
-    .gt("flags", 0)
-    .order("flags", { ascending: false })
-    .order("created_at", { ascending: false });
+  // Flagged: flags > 0 (tolerate missing 'flags' by defaulting to 0)
+  let flaggedRaw: any[] | null = null;
+  try {
+    const { data } = await sb
+      .from("comments")
+      .select("id, story_id, user_id, body, created_at, status, flags")
+      .gt("flags", 0)
+      .order("flags", { ascending: false })
+      .order("created_at", { ascending: false });
+    flaggedRaw = data ?? [];
+  } catch {
+    flaggedRaw = [];
+  }
 
   const pending = (pendingRaw ?? []).map((r: any) => ({
     ...r,
@@ -69,9 +86,6 @@ export default async function ModerationPage() {
     ...r,
     flags_count: r.flags ?? 0,
   }));
-
-  // If needed, you can surface errors:
-  // (pendErr || flagErr) && console.error(pendErr?.message || flagErr?.message);
 
   return (
     <div className="container py-8 space-y-8">
