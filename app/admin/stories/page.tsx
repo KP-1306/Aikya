@@ -16,28 +16,64 @@ type Row = {
   created_at: string;
 };
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export default async function AdminStoriesPage() {
   const sb = supabaseServer();
 
   // Must be signed in
-  const { data: { user } } = await sb.auth.getUser();
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
   if (!user) redirect("/signin");
 
-  // Must be admin
-  const { data: admin } = await sb
-    .from("admins")
-    .select("user_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (!admin) redirect("/");
+  // Must be admin/owner: RPC → user_profiles → profiles
+  let isAdmin = false;
+  try {
+    const { data, error } = await sb.rpc("is_admin").single();
+    if (!error && (data as unknown as boolean) === true) {
+      isAdmin = true;
+    }
+  } catch {
+    /* ignore */
+  }
 
-  // Thanks to your admin RLS policy, this returns drafts + published
+  if (!isAdmin) {
+    // fallback to role tables
+    let role: string | null = null;
+
+    const up = await sb
+      .from("user_profiles" as any)
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!up.error) role = (up.data as any)?.role ?? null;
+
+    if (!role) {
+      const pf = await sb
+        .from("profiles" as any)
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (!pf.error) role = (pf.data as any)?.role ?? null;
+    }
+
+    if (role !== "admin" && role !== "owner") {
+      redirect("/");
+    }
+  }
+
+  // Admin list: drafts + published (RLS should allow admin access)
   const { data, error } = await sb
-    .from("stories")
-    .select("id, slug, title, state, city, is_published, published_at, created_at")
+    .from("stories" as any)
+    .select(
+      "id, slug, title, state, city, is_published, published_at, created_at"
+    )
     .order("created_at", { ascending: false });
 
   if (error) {
+    // Don't crash the page; show graceful empty state instead
     console.error("Admin list fetch error:", error.message);
   }
 
@@ -49,7 +85,8 @@ export default async function AdminStoriesPage() {
         <div>
           <h1 className="text-2xl font-bold">Admin · Stories</h1>
           <p className="text-sm text-neutral-600">
-            Create, ingest, publish, edit, or delete stories. Only admins can see this page.
+            Create, ingest, publish, edit, or delete stories. Only admins can
+            see this page.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -86,7 +123,8 @@ export default async function AdminStoriesPage() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-neutral-500">
-                  No stories yet. Click <em>+ New</em> or <em>Ingest URL</em> to create your first one.
+                  No stories yet. Click <em>+ New</em> or <em>Ingest URL</em> to
+                  create your first one.
                 </td>
               </tr>
             )}
@@ -94,7 +132,10 @@ export default async function AdminStoriesPage() {
             {rows.map((r) => (
               <tr key={r.id} className="border-t">
                 <td className="px-4 py-2">
-                  <Link href={`/story/${r.slug}`} className="font-medium hover:underline">
+                  <Link
+                    href={`/story/${r.slug}`}
+                    className="font-medium hover:underline"
+                  >
                     {r.title}
                   </Link>
                   <div className="text-xs text-neutral-500">
@@ -110,12 +151,16 @@ export default async function AdminStoriesPage() {
                       Published
                     </span>
                   ) : (
-                    <span className="rounded bg-neutral-200 px-2 py-0.5">Draft</span>
+                    <span className="rounded bg-neutral-200 px-2 py-0.5">
+                      Draft
+                    </span>
                   )}
                 </td>
 
                 <td className="px-4 py-2">
-                  {r.published_at ? new Date(r.published_at).toLocaleString() : "—"}
+                  {r.published_at
+                    ? new Date(r.published_at).toLocaleString()
+                    : "—"}
                 </td>
 
                 <td className="px-4 py-2">
@@ -137,8 +182,8 @@ export default async function AdminStoriesPage() {
       </div>
 
       <p className="text-xs text-neutral-500">
-        Tip: Publishing sets <code>is_published</code> to <code>true</code> and updates{" "}
-        <code>published_at</code>.
+        Tip: Publishing sets <code>is_published</code> to <code>true</code> and
+        updates <code>published_at</code>.
       </p>
     </div>
   );
