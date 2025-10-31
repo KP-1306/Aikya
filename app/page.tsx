@@ -108,20 +108,30 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       ? stateOverride ?? (hasState ? profile!.state : undefined)
       : undefined;
 
-  // 4) Main feed stories
-  const items = (await getStories({ city, state, limit: 24 })) ?? [];
+  // 4) Main feed stories (FAIL-SOFT)
+  let items: any[] = [];
+  try {
+    items = (await getStories({ city, state, limit: 24 })) ?? [];
+  } catch {
+    items = [];
+  }
 
-  // 5) Personalized rail — uses user + (fallback) state
-  const sb = supabaseServer();
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-
-  const recs = (await getRecommendations({
-    userId: user?.id,
-    state: profile?.state,
-    limit: 6,
-  })) as any[];
+  // 5) Personalized rail — uses user + (fallback) state (FAIL-SOFT)
+  let recs: any[] = [];
+  try {
+    const sb = supabaseServer();
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+    recs =
+      ((await getRecommendations({
+        userId: user?.id,
+        state: profile?.state,
+        limit: 6,
+      })) as any[]) ?? [];
+  } catch {
+    recs = [];
+  }
 
   // avoid showing duplicates between main grid and recs
   const seen = new Set(items.map((s: any) => s.slug));
