@@ -12,26 +12,6 @@ export const metadata: Metadata = {
   description: "Admin landing for content tools.",
 };
 
-async function requireAdmin() {
-  const sb = supabaseServer();
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) redirect("/signin");
-
-  // Prefer RPC if you created it; otherwise fall back to profiles.role
-  const rpc = await sb.rpc("is_admin").single().catch(() => ({ data: null as null | boolean }));
-  if (rpc?.data === true) return;
-
-  const { data: prof } = await sb
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (prof?.role !== "admin") redirect("/");
-}
-
 function Card({
   href,
   title,
@@ -53,7 +33,7 @@ function Card({
 }
 
 export default async function AdminContentHome() {
-  await requireAdmin();
+  await assertAdminOrOwner();
 
   return (
     <div className="container py-8 space-y-6">
@@ -65,8 +45,9 @@ export default async function AdminContentHome() {
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* NOTE: Route groups like (content) are not part of the URL. */}
         <Card
-          href="/admin/(content)/acts"
+          href="/admin/acts"
           title="Good Acts"
           desc="Verify & manage Proof-of-Good submissions."
         />
@@ -111,7 +92,7 @@ export default async function AdminContentHome() {
           desc="Configure action types, review queue, karma rules."
         />
 
-        {/* New: Weekly Digest preview (opens HTML preview; sending handled by Netlify function) */}
+        {/* Weekly Digest preview (HTML); sending handled by Netlify function if email keys exist */}
         <Card
           href="/api/admin/digest/preview"
           title="Weekly Digest (Preview)"
@@ -120,4 +101,59 @@ export default async function AdminContentHome() {
       </section>
     </div>
   );
+}
+
+/**
+ * Server-side guard:
+ * 1) Prefer RPC is_admin() returning boolean (ignore failure cleanly)
+ * 2) Fallback to role from user_profiles, then profiles
+ * 3) Redirect if not admin/owner
+ */
+async function assertAdminOrOwner() {
+  const sb = supabaseServer();
+
+  // Ensure we have a signed-in user
+  const { data: userRes } = await sb.auth.getUser();
+  const user = userRes?.user;
+  if (!user) redirect("/signin");
+
+  // 1) Try RPC is_admin()
+  let isAdmin: boolean | null = null;
+  try {
+    // .single() returns { data, error }; no .catch() chaining needed
+    const { data, error } = await sb.rpc("is_admin").single();
+    if (!error) {
+      // RPC often returns a scalar; cast safely
+      isAdmin = (data as unknown as boolean) ?? null;
+    }
+  } catch {
+    // swallow; we'll fall back to role checks
+  }
+  if (isAdmin === true) return;
+
+  // 2) Fallback: role from user_profiles, then profiles
+  let role: string | null = null;
+
+  // Try user_profiles first
+  const up = await sb
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!up.error) role = (up.data as any)?.role ?? null;
+
+  // Fallback to profiles if user_profiles isn’t present
+  if (!role) {
+    const pf = await sb
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!pf.error) role = (pf.data as any)?.role ?? null;
+  }
+
+  if (role === "admin" || role === "owner") return;
+
+  // 3) Not authorized
+  redirect("/signin?error=not_authorized");
 }
