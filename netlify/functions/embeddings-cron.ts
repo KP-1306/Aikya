@@ -1,10 +1,10 @@
 // netlify/functions/embeddings-cron.ts
-import type { Handler } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
+const SUPABASE_URL =
+  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
 const JOB = "embeddings";
 const DEFAULT_BATCH = Number(process.env.EMBEDDINGS_CRON_BATCH ?? 25);
@@ -34,13 +34,14 @@ async function embedBatch(texts: string[]) {
     body: JSON.stringify({ model: OPENAI_MODEL, input: texts }),
   });
   if (!res.ok) throw new Error(`OpenAI error ${res.status}: ${await res.text()}`);
-  const json = await res.json() as { data?: Array<{ embedding: number[] }> };
+  const json = (await res.json()) as { data?: Array<{ embedding: number[] }> };
   const out = (json.data ?? []).map((d) => norm(d.embedding));
   if (out.length !== texts.length) throw new Error("Embedding length mismatch");
   return out;
 }
 
-export const handler: Handler = async () => {
+// Export a plain handler so we don't need @netlify/functions types
+export async function handler() {
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !OPENAI_API_KEY) {
       return {
@@ -48,15 +49,16 @@ export const handler: Handler = async () => {
         body: "Missing env: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / OPENAI_API_KEY",
       };
     }
-    const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false },
+    });
 
     // ---- Lock & rate checks ----
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
 
     // Ensure control row exists
-    await supa.from("cron_control")
-      .upsert([{ job: JOB, day: today }], { onConflict: "job" });
+    await supa.from("cron_control").upsert([{ job: JOB, day: today }], { onConflict: "job" });
 
     // Fetch current control state
     const { data: ctrlRow, error: ctrlErr } = await supa
@@ -69,8 +71,8 @@ export const handler: Handler = async () => {
     // Daily window refresh
     let daily_count = ctrlRow.daily_count ?? 0;
     if (ctrlRow.day !== today) {
-      // Reset daily window
-      const { error: upd } = await supa.from("cron_control")
+      const { error: upd } = await supa
+        .from("cron_control")
         .update({ day: today, daily_count: 0 })
         .eq("job", JOB);
       if (upd) throw new Error(upd.message);
@@ -84,33 +86,39 @@ export const handler: Handler = async () => {
     if (ctrlRow.last_run) {
       const mins = (now.getTime() - new Date(ctrlRow.last_run).getTime()) / 60000;
       if (mins < MIN_INTERVAL_MIN) {
-        return { statusCode: 200, body: `Skipped: ran ${mins.toFixed(1)}m ago; min ${MIN_INTERVAL_MIN}m.` };
+        return {
+          statusCode: 200,
+          body: `Skipped: ran ${mins.toFixed(1)}m ago; min ${MIN_INTERVAL_MIN}m.`,
+        };
       }
     }
 
     // Acquire lock for 10 minutes
     const lockUntil = new Date(now.getTime() + 10 * 60 * 1000).toISOString();
-    const { error: lockErr } = await supa.from("cron_control")
+    const { error: lockErr } = await supa
+      .from("cron_control")
       .update({ locked_until: lockUntil })
       .eq("job", JOB)
       .or(`locked_until.is.null,locked_until.lte.${now.toISOString()}`);
-    // If lock update did not match the row, someone else holds it
     if (lockErr) throw new Error(lockErr.message);
 
     // Re-read to confirm we hold lock
     const { data: checkLock } = await supa.from("cron_control").select("*").eq("job", JOB).single();
-    if (checkLock.locked_until && new Date(checkLock.locked_until).getTime() < now.getTime()) {
+    if (
+      checkLock.locked_until &&
+      new Date(checkLock.locked_until).getTime() < now.getTime()
+    ) {
       return { statusCode: 200, body: "Skipped: lock not acquired." };
     }
 
     // ---- Select rows needing embedding ----
-    // Prefer view if present
     let rows: any[] = [];
     const view = await supa
       .from("stories_needing_embedding")
       .select("id, slug, title, dek, what, how, why, published_at")
       .order("published_at", { ascending: false })
       .limit(DEFAULT_BATCH);
+
     if (!view.error && view.data) {
       rows = view.data;
     } else {
@@ -125,15 +133,18 @@ export const handler: Handler = async () => {
       if (fallback.error) throw new Error(fallback.error.message);
       rows = fallback.data ?? [];
     }
+
     if (rows.length === 0) {
-      // Release lock + stamp last_run (no-op)
-      await supa.from("cron_control").update({ last_run: now.toISOString(), locked_until: null }).eq("job", JOB);
+      await supa
+        .from("cron_control")
+        .update({ last_run: now.toISOString(), locked_until: null })
+        .eq("job", JOB);
       return { statusCode: 200, body: "Nothing to embed." };
     }
 
-    // ---- Embed in a couple of chunks ----
+    // ---- Embed in chunks ----
     const texts = rows.map(embedText);
-    const chunkSize = 96; // safe multi-input to embeddings API
+    const chunkSize = 96;
     const vectors: number[][] = [];
     for (let i = 0; i < texts.length; i += chunkSize) {
       const chunk = texts.slice(i, i + chunkSize);
@@ -147,21 +158,24 @@ export const handler: Handler = async () => {
       const storyId = rows[i].id as string;
       const vec = vectors[i];
 
-      // Try RPC first
       const rpc = await supa.rpc("set_story_embedding", {
         p_id: storyId,
         p_embedding: vec as unknown as number[],
       });
       if (rpc.error && !/function set_story_embedding/i.test(rpc.error.message)) {
-        // RPC exists but failed for another reason → throw
         throw new Error(rpc.error.message);
       }
       if (rpc.error) {
-        // Fallback to direct write
         const { error: up } = await supa
           .from("stories")
           .upsert(
-            [{ id: storyId, embedding: vec as unknown as any, embedding_updated_at: new Date().toISOString() }],
+            [
+              {
+                id: storyId,
+                embedding: vec as unknown as any,
+                embedding_updated_at: new Date().toISOString(),
+              },
+            ],
             { onConflict: "id", ignoreDuplicates: false }
           );
         if (up) throw new Error(up.message);
@@ -170,7 +184,8 @@ export const handler: Handler = async () => {
     }
 
     // ---- Bump counters + release lock ----
-    const { error: doneErr } = await supa.from("cron_control")
+    const { error: doneErr } = await supa
+      .from("cron_control")
       .update({
         last_run: now.toISOString(),
         locked_until: null,
@@ -182,10 +197,13 @@ export const handler: Handler = async () => {
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ updated, remainingToday: Math.max(0, MAX_DAILY - (daily_count + updated)) }),
+      body: JSON.stringify({
+        updated,
+        remainingToday: Math.max(0, MAX_DAILY - (daily_count + updated)),
+      }),
       headers: { "content-type": "application/json" },
     };
   } catch (e: any) {
     return { statusCode: 500, body: String(e?.message ?? e) };
   }
-};
+}
