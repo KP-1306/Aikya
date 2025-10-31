@@ -47,6 +47,48 @@ function sanitizeUrl(u?: string | null) {
   }
 }
 
+async function requireAdmin(): Promise<{ ok: boolean; userId?: string }> {
+  const sb = supabaseServer();
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return { ok: false };
+
+  // Prefer RPC
+  try {
+    const { data, error } = await sb.rpc("is_admin").single();
+    if (!error && (data as unknown as boolean) === true) {
+      return { ok: true, userId: user.id };
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // Fallback: user_profiles → profiles
+  let role: string | null = null;
+
+  const up = await sb
+    .from("user_profiles" as any)
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!up.error) role = (up.data as any)?.role ?? null;
+
+  if (!role) {
+    const pf = await sb
+      .from("profiles" as any)
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!pf.error) role = (pf.data as any)?.role ?? null;
+  }
+
+  if (role === "admin" || role === "owner") {
+    return { ok: true, userId: user.id };
+  }
+  return { ok: false };
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => null)) as Body | null;
@@ -55,18 +97,8 @@ export async function POST(req: Request) {
     }
 
     // ── Auth + admin guard (RLS-safe)
-    const sb = supabaseServer();
-    const {
-      data: { user },
-    } = await sb.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { data: admin } = await sb
-      .from("admins")
-      .select("user_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const guard = await requireAdmin();
+    if (!guard.ok) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     // ── Service client (bypasses RLS where needed)
     const svc = trySupabaseService();
@@ -90,7 +122,7 @@ export async function POST(req: Request) {
       // eslint-disable-next-line no-constant-condition
       while (true) {
         const { data: hit } = await svc
-          .from("stories")
+          .from("stories" as any)
           .select("id")
           .eq("slug", candidate)
           .limit(1)
@@ -126,17 +158,17 @@ export async function POST(req: Request) {
       slug = await ensureUniqueSlug(slug);
       const insertRow = { ...row, slug, published_at: isPublishing ? nowIso : null };
       const { data: created, error: insErr } = await svc
-        .from("stories")
+        .from("stories" as any)
         .insert(insertRow)
         .select("id, slug")
         .single();
       if (insErr) return NextResponse.json({ error: insErr.message }, { status: 400 });
-      storyId = created.id;
-      slug = created.slug;
+      storyId = (created as any).id;
+      slug = (created as any).slug;
     } else {
       // EDIT
       const { data: existing, error: getErr } = await svc
-        .from("stories")
+        .from("stories" as any)
         .select("id, slug, is_published, published_at, title")
         .eq("id", storyId)
         .single();
@@ -145,26 +177,29 @@ export async function POST(req: Request) {
       }
 
       // If title changed, compute a new unique slug
-      const titleChanged = existing.title !== body.title;
-      slug = titleChanged ? await ensureUniqueSlug(slugify(body.title), storyId) : existing.slug;
+      const titleChanged = (existing as any).title !== body.title;
+      slug = titleChanged ? await ensureUniqueSlug(slugify(body.title), storyId) : (existing as any).slug;
 
       // Manage published_at transitions
-      let published_at = existing.published_at;
-      if (isPublishing && !existing.is_published) {
+      let published_at = (existing as any).published_at as string | null;
+      if (isPublishing && !(existing as any).is_published) {
         published_at = nowIso; // draft → published
       }
-      if (!isPublishing && existing.is_published) {
+      if (!isPublishing && (existing as any).is_published) {
         published_at = null; // published → draft
       }
 
       const updateRow = { ...row, slug, published_at };
-      const { error: updErr } = await svc.from("stories").update(updateRow).eq("id", storyId);
+      const { error: updErr } = await svc
+        .from("stories" as any)
+        .update(updateRow)
+        .eq("id", storyId);
       if (updErr) return NextResponse.json({ error: updErr.message }, { status: 400 });
     }
 
     // ── Upsert sources: replace the whole set for this story
     if (Array.isArray(body.sources)) {
-      await svc.from("sources").delete().eq("story_id", storyId);
+      await svc.from("sources" as any).delete().eq("story_id", storyId);
       const toInsert =
         body.sources
           .filter((s) => s?.name && s?.url)
@@ -176,7 +211,7 @@ export async function POST(req: Request) {
           .filter((s) => s.url) ?? [];
 
       if (toInsert.length) {
-        const { error: srcErr } = await svc.from("sources").insert(toInsert);
+        const { error: srcErr } = await svc.from("sources" as any).insert(toInsert);
         if (srcErr) return NextResponse.json({ error: srcErr.message }, { status: 400 });
       }
     }
@@ -184,23 +219,23 @@ export async function POST(req: Request) {
     // ── Build & save embedding (best-effort; non-fatal on failure)
     try {
       const { data: story } = await svc
-        .from("stories")
+        .from("stories" as any)
         .select("id, title, dek, what, how, why, life_lesson, virtues")
         .eq("id", storyId)
         .single();
 
       if (story) {
         const text = buildStoryText({
-          title: story.title,
-          dek: story.dek ?? undefined,
-          what: story.what ?? undefined,
-          how: story.how ?? undefined,
-          why: story.why ?? undefined,
-          life_lesson: story.life_lesson ?? undefined,
-          virtues: story.virtues ?? undefined,
+          title: (story as any).title,
+          dek: (story as any).dek ?? undefined,
+          what: (story as any).what ?? undefined,
+          how: (story as any).how ?? undefined,
+          why: (story as any).why ?? undefined,
+          life_lesson: (story as any).life_lesson ?? undefined,
+          virtues: (story as any).virtues ?? undefined,
         });
         const vec = await embedText(text); // number[]
-        await svc.from("stories").update({ embedding: vec }).eq("id", story.id);
+        await svc.from("stories" as any).update({ embedding: vec }).eq("id", (story as any).id);
       }
     } catch {
       // swallow embedding errors (optional: add Sentry here)
