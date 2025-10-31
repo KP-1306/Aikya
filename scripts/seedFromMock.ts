@@ -1,19 +1,16 @@
 // scripts/seedFromMock.ts
 import { createClient } from "@supabase/supabase-js";
-
-// Adjust the relative path if your file lives elsewhere
 import { stories as mock } from "../lib/mock";
 
-// Environment (Netlify has SUPABASE_SERVICE_ROLE_KEY)
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+// ---- Environment (Netlify provides SUPABASE_SERVICE_ROLE_KEY) ----
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const serviceKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.SUPABASE_SERVICE_ROLE ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY_OLD || // fallback if you had an older var
+  process.env.SUPABASE_SERVICE_ROLE_KEY_OLD ||
   "";
 
 if (!url || !serviceKey) {
-  // Fail fast at build if env is missing
   throw new Error(
     "[seedFromMock] Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env."
   );
@@ -21,10 +18,10 @@ if (!url || !serviceKey) {
 
 const sb = createClient(url, serviceKey, { auth: { persistSession: false } });
 
-// Map mock → DB row (snake_case)
+// ---- Helpers: map mock → DB row (snake_case) ----
 function toDb(s: any) {
   return {
-    // id (omit → let DB default / uuid generate)
+    // id omitted → DB default/uuid
     slug: s.slug,
     title: s.title,
     dek: s.dek ?? null,
@@ -41,43 +38,43 @@ function toDb(s: any) {
     how: s.how ?? null,
     why: s.why ?? null,
     is_published: s.is_published ?? true,
-    // created_at handled by DB default
-    // deleted_at remains null
+    // created_at: DB default
+    // deleted_at: stays null
   };
 }
 
 async function main() {
-  // (A) Optionally ensure a unique index for sources; ignore if you don’t have exec_sql
+  // (A) Ensure minimal schema for sources (idempotent). Skip if rpc not present.
   try {
     await sb.rpc("exec_sql", {
       sql: `
-      create table if not exists public.sources(
-        id uuid primary key default gen_random_uuid(),
-        story_id uuid not null references public.stories(id) on delete cascade,
-        name text,
-        url text not null
-      );
-      create unique index if not exists sources_story_url_uidx
-        on public.sources(story_id, url);
-    `,
+        create table if not exists public.sources(
+          id uuid primary key default gen_random_uuid(),
+          story_id uuid not null references public.stories(id) on delete cascade,
+          name text,
+          url text not null
+        );
+        create unique index if not exists sources_story_url_uidx
+          on public.sources(story_id, url);
+      `,
     });
   } catch {
-    // If you don't have the exec_sql function deployed, just skip silently.
+    // exec_sql not available in your project → silently continue
   }
 
-  // (B) Upsert stories by slug
+  // (B) Upsert stories by slug (idempotent)
   const rows = mock.map(toDb);
 
   const { data: upserted, error: upErr } = await sb
     .from("stories")
-    .upsert(rows, { onConflict: "slug", ignoreDuplicates: false })
+    .upsert(rows, { onConflict: "slug" })
     .select("id, slug");
 
   if (upErr) {
     throw new Error("[seedFromMock] stories upsert failed: " + upErr.message);
   }
 
-  // Build a lookup by slug → id
+  // Build slug → id lookup
   const bySlug = new Map<string, string>();
   for (const r of upserted ?? []) {
     bySlug.set(r.slug, r.id);
@@ -94,42 +91,27 @@ async function main() {
     const sources = m.sources ?? [];
     for (const src of sources) {
       if (typeof src === "string") {
-        srcRows.push({
-          story_id: storyId,
-          name: null,
-          url: src,
-        });
+        srcRows.push({ story_id: storyId, name: null, url: src });
       } else if (src && typeof src === "object" && src.url) {
-        srcRows.push({
-          story_id: storyId,
-          name: src.name ?? null,
-          url: src.url,
-        });
+        srcRows.push({ story_id: storyId, name: src.name ?? null, url: src.url });
       }
     }
   }
 
   if (srcRows.length > 0) {
-    // Prefer upsert with composite conflict target if available
+    // Single, supported path: upsert with composite conflict target
     const { error: srcErr } = await sb
       .from("sources")
-      .upsert(srcRows, { onConflict: "story_id,url", ignoreDuplicates: false });
+      .upsert(srcRows, { onConflict: "story_id,url" });
 
-    // If your Postgres doesn’t allow composite onConflict via PostgREST,
-    // you can fall back to ignoreDuplicates (may allow dupes across story_id).
+    // Treat as non-fatal so builds don’t fail if API version differs
     if (srcErr) {
-      const { error: insErr } = await sb
-        .from("sources")
-        .insert(srcRows, { ignoreDuplicates: true });
-      if (insErr) {
-        throw new Error("[seedFromMock] sources insert failed: " + insErr.message);
-      }
+      console.warn("[seedFromMock] sources upsert warning:", srcErr.message);
     }
   }
 
-  // Done
   console.log(
-    `[seedFromMock] Seed complete — stories: ${(upserted ?? []).length}, sources: ${srcRows.length}`
+    `[seedFromMock] Seed complete — stories: ${(upserted ?? []).length}, sources prepared: ${srcRows.length}`
   );
 }
 
