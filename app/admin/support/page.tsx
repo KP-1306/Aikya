@@ -1,7 +1,11 @@
+// app/admin/support/page.tsx
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase/server";
 import AdminHideToggle from "@/components/AdminHideToggle";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type Req = {
   id: string;
@@ -25,19 +29,56 @@ type Offer = {
   created_at: string;
 };
 
-async function guardAndFetch() {
+// Shared, build-safe admin guard
+async function assertAdminOrOwner() {
   const sb = supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+
+  const { data: userRes } = await sb.auth.getUser();
+  const user = userRes?.user;
   if (!user) redirect("/signin");
 
-  const { data: admin } = await sb.from("admins").select("user_id").eq("user_id", user.id).maybeSingle();
-  if (!admin) redirect("/");
+  // Prefer RPC
+  try {
+    const { data, error } = await sb.rpc("is_admin").single();
+    if (!error && (data as unknown as boolean) === true) return { sb, userId: user.id };
+  } catch {
+    /* swallow; fall back */
+  }
+
+  // Fallback: user_profiles → profiles
+  let role: string | null = null;
+
+  const up = await sb
+    .from("user_profiles" as any)
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!up.error) role = (up.data as any)?.role ?? null;
+
+  if (!role) {
+    const pf = await sb
+      .from("profiles" as any)
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!pf.error) role = (pf.data as any)?.role ?? null;
+  }
+
+  if (role === "admin" || role === "owner") return { sb, userId: user.id };
+
+  redirect("/"); // not authorized
+}
+
+async function guardAndFetch() {
+  const { sb } = await assertAdminOrOwner();
 
   const [{ data: reqs }, { data: offers }] = await Promise.all([
-    sb.from("support_requests")
+    sb
+      .from("support_requests" as any)
       .select("id,user_id,kind,title,state,city,status,created_at")
       .order("created_at", { ascending: false }),
-    sb.from("support_offers")
+    sb
+      .from("support_offers" as any)
       .select("id,user_id,kinds,headline,state,city,status,created_at")
       .order("created_at", { ascending: false }),
   ]);
@@ -61,7 +102,9 @@ export default async function AdminSupportPage() {
           </p>
         </div>
         <nav className="text-sm">
-          <Link href="/admin/stories" className="underline hover:no-underline">Stories</Link>
+          <Link href="/admin/stories" className="underline hover:no-underline">
+            Stories
+          </Link>
         </nav>
       </header>
 
@@ -83,10 +126,12 @@ export default async function AdminSupportPage() {
             <tbody>
               {requests.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-neutral-500">No requests found.</td>
+                  <td colSpan={6} className="px-4 py-8 text-neutral-500">
+                    No requests found.
+                  </td>
                 </tr>
               )}
-              {requests.map(r => (
+              {requests.map((r) => (
                 <tr key={r.id} className="border-t align-top">
                   <td className="px-4 py-2">{r.title}</td>
                   <td className="px-4 py-2">{r.kind}</td>
@@ -96,11 +141,7 @@ export default async function AdminSupportPage() {
                   </td>
                   <td className="px-4 py-2">{new Date(r.created_at).toLocaleString()}</td>
                   <td className="px-4 py-2">
-                    <AdminHideToggle
-                      kind="request"
-                      id={r.id}
-                      hidden={r.status === "hidden"}
-                    />
+                    <AdminHideToggle kind="request" id={r.id} hidden={r.status === "hidden"} />
                   </td>
                 </tr>
               ))}
@@ -127,10 +168,12 @@ export default async function AdminSupportPage() {
             <tbody>
               {offers.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-neutral-500">No offers found.</td>
+                  <td colSpan={6} className="px-4 py-8 text-neutral-500">
+                    No offers found.
+                  </td>
                 </tr>
               )}
-              {offers.map(o => (
+              {offers.map((o) => (
                 <tr key={o.id} className="border-t align-top">
                   <td className="px-4 py-2">{o.headline}</td>
                   <td className="px-4 py-2">{(o.kinds || []).join(", ") || "—"}</td>
@@ -140,11 +183,7 @@ export default async function AdminSupportPage() {
                   </td>
                   <td className="px-4 py-2">{new Date(o.created_at).toLocaleString()}</td>
                   <td className="px-4 py-2">
-                    <AdminHideToggle
-                      kind="offer"
-                      id={o.id}
-                      hidden={o.status === "hidden"}
-                    />
+                    <AdminHideToggle kind="offer" id={o.id} hidden={o.status === "hidden"} />
                   </td>
                 </tr>
               ))}
@@ -154,7 +193,8 @@ export default async function AdminSupportPage() {
       </section>
 
       <p className="text-xs text-neutral-500">
-        Hiding sets status to <code>hidden</code>. Unhiding returns to <code>open</code> (requests) or <code>active</code> (offers).
+        Hiding sets status to <code>hidden</code>. Unhiding returns to <code>open</code> (requests)
+        or <code>active</code> (offers).
       </p>
     </div>
   );
