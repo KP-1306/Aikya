@@ -11,32 +11,49 @@ export default function SignUpPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  // Always point email redirects to /auth/callback on the same origin
   const redirectTo = useMemo(() => {
-    const origin = typeof window !== "undefined" ? window.location.origin : (process.env.NEXT_PUBLIC_SITE_URL || "");
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : (process.env.NEXT_PUBLIC_SITE_URL || "");
     return `${origin.replace(/\/$/, "")}/auth/callback`;
   }, []);
 
   async function onPasswordSignup(e: React.FormEvent) {
-    e.preventDefault(); setErr(null); setMsg(null); setLoading("password");
+    e.preventDefault();
+    setErr(null);
+    setMsg(null);
+    setLoading("password");
+
     const { error } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
       options: { emailRedirectTo: redirectTo },
     });
+
     setLoading(null);
     if (error) setErr(error.message);
     else setMsg("Account created. Check your email to confirm your address.");
   }
 
   async function onMagicLink(e: React.FormEvent) {
-    e.preventDefault(); setErr(null); setMsg(null); setLoading("magic");
+    e.preventDefault();
+    setErr(null);
+    setMsg(null);
+    setLoading("magic");
+
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
-      options: { emailRedirectTo: redirectTo, shouldCreateUser: true },
+      options: { emailRedirectTo: redirectTo },
     });
+
     setLoading(null);
     if (error) setErr(error.message);
-    else setMsg("Magic link sent. Open it in the SAME browser you used here.");
+    else
+      setMsg(
+        "Magic link sent. Check your inbox and open the link in the SAME browser you used to request it."
+      );
   }
 
   return (
@@ -44,43 +61,83 @@ export default function SignUpPage() {
       <h1 className="text-2xl font-bold mb-1">Create your account</h1>
       <p className="text-neutral-600 mb-6">Sign up to comment and save stories.</p>
 
-      {err && <div className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{err}</div>}
-      {msg && <div className="mb-4 rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{msg}</div>}
+      {err && (
+        <div className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+          {err}
+        </div>
+      )}
+      {msg && (
+        <div className="mb-4 rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+          {msg}
+        </div>
+      )}
 
+      {/* Email + Password sign up */}
       <form onSubmit={onPasswordSignup} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium" htmlFor="email">Email</label>
-          <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+          <label className="block text-sm font-medium" htmlFor="email">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            placeholder="you@example.com" autoComplete="email" />
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
         </div>
 
         <div>
-          <label className="block text-sm font-medium" htmlFor="password">Password</label>
-          <input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+          <label className="block text-sm font-medium" htmlFor="password">
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            placeholder="Create a password" autoComplete="new-password" />
+            placeholder="Create a password"
+            autoComplete="new-password"
+          />
         </div>
 
-        <button type="submit" disabled={loading !== null}
-          className="w-full rounded-md bg-emerald-600 px-4 py-2 text-white disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={loading !== null}
+          className="w-full rounded-md bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
+        >
           {loading === "password" ? "Creating…" : "Create account"}
         </button>
       </form>
 
       <div className="my-6 flex items-center gap-3 text-sm text-neutral-500">
-        <span className="h-px flex-1 bg-neutral-200" />or<span className="h-px flex-1 bg-neutral-200" />
+        <span className="h-px flex-1 bg-neutral-200" />
+        or
+        <span className="h-px flex-1 bg-neutral-200" />
       </div>
 
+      {/* Magic link sign up */}
       <form onSubmit={onMagicLink}>
-        <button type="submit" disabled={!email || loading !== null}
-          className="w-full rounded-md border border-neutral-300 bg-white px-4 py-2 text-neutral-800 hover:bg-neutral-50 disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={!email || loading !== null}
+          className="w-full rounded-md border border-neutral-300 bg-white px-4 py-2 text-neutral-800 hover:bg-neutral-50 disabled:opacity-60"
+          title={!email ? "Enter your email above first" : "Send me a magic link"}
+        >
           {loading === "magic" ? "Sending link…" : "Email me a magic link"}
         </button>
       </form>
 
       <p className="mt-6 text-sm text-neutral-600">
-        Already have an account? <Link href="/signin" className="underline">Sign in</Link>
+        Already have an account?{" "}
+        <Link href="/auth/signin" className="underline">
+          Sign in
+        </Link>
       </p>
     </main>
   );
