@@ -27,7 +27,7 @@ export default async function AdminSupportReview({ params }: PageProps) {
 
   // ---- Load the Support Action (tolerant selection) ----
   const { data, error } = await sb
-    .from("support_actions")
+    .from("support_actions" as any)
     .select("id,title,description,city,state,status,evidence_url,created_at,updated_at")
     .eq("id", params.id)
     .maybeSingle();
@@ -131,7 +131,7 @@ async function isAdminOrOwner(sb: ReturnType<typeof supabaseServer>): Promise<bo
   let role: string | null = null;
 
   const up = await sb
-    .from("user_profiles")
+    .from("user_profiles" as any)
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
@@ -139,7 +139,7 @@ async function isAdminOrOwner(sb: ReturnType<typeof supabaseServer>): Promise<bo
 
   if (!role) {
     const pf = await sb
-      .from("profiles")
+      .from("profiles" as any)
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
