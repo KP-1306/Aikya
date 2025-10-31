@@ -32,15 +32,16 @@ type Offer = {
 // Shared, build-safe admin guard
 async function assertAdminOrOwner() {
   const sb = supabaseServer();
+  const sba = sb as any; // ✅ cast the client once
 
-  const { data: userRes } = await sb.auth.getUser();
+  const { data: userRes } = await sba.auth.getUser();
   const user = userRes?.user;
   if (!user) redirect("/signin");
 
   // Prefer RPC
   try {
-    const { data, error } = await sb.rpc("is_admin").single();
-    if (!error && (data as unknown as boolean) === true) return { sb, userId: user.id };
+    const { data, error } = await sba.rpc("is_admin").single();
+    if (!error && (data as unknown as boolean) === true) return { sb: sba, userId: user.id };
   } catch {
     /* swallow; fall back */
   }
@@ -48,37 +49,27 @@ async function assertAdminOrOwner() {
   // Fallback: user_profiles → profiles
   let role: string | null = null;
 
-  const up = await sb
-    .from("user_profiles" as any)
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
+  const up = await sba.from("user_profiles").select("role").eq("id", user.id).maybeSingle();
   if (!up.error) role = (up.data as any)?.role ?? null;
 
   if (!role) {
-    const pf = await sb
-      .from("profiles" as any)
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
+    const pf = await sba.from("profiles").select("role").eq("id", user.id).maybeSingle();
     if (!pf.error) role = (pf.data as any)?.role ?? null;
   }
 
-  if (role === "admin" || role === "owner") return { sb, userId: user.id };
+  if (role === "admin" || role === "owner") return { sb: sba, userId: user.id };
 
   redirect("/"); // not authorized
 }
 
 async function guardAndFetch() {
-  const { sb } = await assertAdminOrOwner();
+  const { sb } = await assertAdminOrOwner(); // sb is already the casted client (sba)
 
   const [{ data: reqs }, { data: offers }] = await Promise.all([
-    sb
-      .from("support_requests" as any)
+    sb.from("support_requests")
       .select("id,user_id,kind,title,state,city,status,created_at")
       .order("created_at", { ascending: false }),
-    sb
-      .from("support_offers" as any)
+    sb.from("support_offers")
       .select("id,user_id,kinds,headline,state,city,status,created_at")
       .order("created_at", { ascending: false }),
   ]);
