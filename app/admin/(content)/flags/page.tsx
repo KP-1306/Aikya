@@ -5,39 +5,43 @@ import { supabaseServer } from "@/lib/supabase/server";
 export const metadata = { title: "Admin · Flags" };
 export const dynamic = "force-dynamic";
 
-/** Centralized, safe admin check (no union types; uses maybeSingle) */
+// Keep this self-contained to avoid leaking the problematic union type
 async function isAdmin(): Promise<boolean> {
-  const sb = supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const sb: any = supabaseServer(); // cast to avoid union-callable TS error
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
   if (!user) return false;
 
   const { data: profile } = await sb
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .maybeSingle(); // avoid .single() overload issues
+    .maybeSingle();
 
   return profile?.role === "admin";
 }
 
 export default async function AdminFlags() {
-  // Gate early (don’t construct heavy queries if not admin)
   if (!(await isAdmin())) {
     return (
       <div className="container space-y-3">
         <h1 className="text-xl font-semibold">Not authorized</h1>
         <p className="text-sm text-neutral-600">Admin access required.</p>
-        <Link href="/" className="underline text-sm">Go home</Link>
+        <Link href="/" className="underline text-sm">
+          Go home
+        </Link>
       </div>
     );
   }
 
-  const sb = supabaseServer();
+  const sb: any = supabaseServer(); // cast here as well
 
-  // Pull flagged comments. The join alias is kept schema-tolerant.
+  // Flagged comments: either is_flagged=true OR flags_count>0
   const { data: comments, error } = await sb
     .from("comments")
-    .select(`
+    .select(
+      `
       id,
       body,
       created_at,
@@ -50,7 +54,8 @@ export default async function AdminFlags() {
         slug,
         title
       )
-    `)
+    `
+    )
     .or("is_flagged.eq.true,flags_count.gt.0")
     .order("created_at", { ascending: false })
     .limit(100);
@@ -106,19 +111,25 @@ export default async function AdminFlags() {
                 <form action="/api/admin/comments/moderate" method="POST">
                   <input type="hidden" name="id" value={c.id} />
                   <input type="hidden" name="action" value="approve" />
-                  <button className="btn" type="submit">Approve</button>
+                  <button className="btn" type="submit">
+                    Approve
+                  </button>
                 </form>
 
                 <form action="/api/admin/comments/moderate" method="POST">
                   <input type="hidden" name="id" value={c.id} />
                   <input type="hidden" name="action" value="hide" />
-                  <button className="btn-secondary" type="submit">Hide</button>
+                  <button className="btn-secondary" type="submit">
+                    Hide
+                  </button>
                 </form>
 
                 <form action="/api/admin/comments/moderate" method="POST">
                   <input type="hidden" name="id" value={c.id} />
                   <input type="hidden" name="action" value="ban_user" />
-                  <button className="btn-danger" type="submit">Ban user</button>
+                  <button className="btn-danger" type="submit">
+                    Ban user
+                  </button>
                 </form>
               </div>
             </li>
