@@ -70,6 +70,8 @@ function getOrigin() {
 }
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   // 0) Optional search query (from GET ?q=)
