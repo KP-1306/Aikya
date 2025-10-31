@@ -2,6 +2,7 @@
 import Link from "next/link";
 import Image from "next/image";
 
+import FeaturedHero from "@/components/FeaturedHero"; // NEW: the hero/weekly-best section
 import { getStories } from "@/lib/data";
 import { getCurrentUserRegion } from "@/lib/user";
 import FeedToggle from "@/components/FeedToggle";
@@ -18,27 +19,29 @@ type SearchResponse = {
   error?: string | null;
 };
 
-// Simple card (shared by feed + search results)
+// Refined story card (used in feed + search results)
 function StoryCard({ s }: { s: any }) {
   return (
-    <li key={s.slug ?? s.id} className="card overflow-hidden">
+    <li key={s.slug ?? s.id} className="group overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition">
       <Link href={`/story/${s.slug}`} className="block">
-        <div className="relative w-full aspect-[16/9] bg-neutral-100">
-          {s.hero_image && (
+        <div className="relative w-full aspect-[16/9] bg-neutral-100 overflow-hidden">
+          {s.hero_image ? (
             <Image
               src={s.hero_image}
               alt={s.title}
               fill
-              className="object-cover"
+              className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
               sizes="(max-width: 768px) 100vw, 33vw"
             />
+          ) : (
+            <div className="absolute inset-0 grid place-items-center text-neutral-400 text-sm">Aikya</div>
           )}
         </div>
         <div className="p-4">
           <div className="text-xs text-neutral-500">
-            {(s.city || s.state || s.country) ?? "—"} • {s.read_minutes ?? 3} min
+            {(s.city || s.state || s.country) ?? "—"} · {s.read_minutes ?? 3} min
           </div>
-          <h3 className="mt-1 font-semibold line-clamp-2">{s.title}</h3>
+          <h3 className="mt-1 font-semibold leading-snug line-clamp-2">{s.title}</h3>
           {s.dek && (
             <p className="text-sm text-neutral-600 line-clamp-2 mt-1">{s.dek}</p>
           )}
@@ -142,137 +145,142 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const prefetchList = Array.from(new Set(prefetchHrefs));
 
   return (
-    <div className="container space-y-8">
-      {/* Top header with mode toggle + Search */}
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">{heading}</h2>
-          <p className="text-sm text-neutral-600">{sub}</p>
-        </div>
+    <>
+      {/* Weekly-best hero with live stats */}
+      {/* FeaturedHero is a Server Component; safe to render here */}
+      <FeaturedHero />
 
-        {/* Simple GET search (keeps URL shareable). Preserves current mode via hidden input. */}
-        <form method="GET" className="flex items-center gap-2 w-full sm:w-auto">
-          <input type="hidden" name="mode" value={mode} aria-hidden="true" />
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Search uplifting stories…"
-            className="input w-full sm:w-80"
-            aria-label="Search stories"
-          />
-          <button className="btn" type="submit">
-            Search
-          </button>
-          {hasQuery && (
-            <Link
-              href={mode ? `/?mode=${mode}` : "/"}
-              className="text-sm text-neutral-500 underline whitespace-nowrap"
-              aria-label="Clear search"
-            >
-              Clear
-            </Link>
-          )}
-        </form>
-
-        {/* Region toggle on the far right (on larger screens) */}
-        <div className="sm:ml-6">
-          <FeedToggle hasCity={hasCity} hasState={hasState} />
-        </div>
-      </header>
-
-      {/* Hint to encourage setting location */}
-      {!(hasCity || hasState) && <LocalSetupBanner />}
-
-      {/* Search results (if any) */}
-      {hasQuery && (
-        <section className="space-y-3">
-          <div className="flex items-baseline justify-between">
-            <h3 className="text-lg font-semibold">Search results for “{q}”</h3>
-            {/* Badge shows whether results came from vector or keyword path */}
-            <p className="text-xs text-neutral-500">
-              {searchMode === "vector" ? "AI semantic search" : "Keyword search"}
-            </p>
+      <div className="container space-y-8">
+        {/* Top header with mode toggle + Search */}
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">{heading}</h2>
+            <p className="text-sm text-neutral-600">{sub}</p>
           </div>
 
-          {searchResults.length > 0 ? (
+          {/* Search (GET) – preserves mode via hidden input */}
+          <form method="GET" className="flex items-center gap-2 w-full sm:w-auto">
+            <input type="hidden" name="mode" value={mode} aria-hidden="true" />
+            <input
+              name="q"
+              defaultValue={q}
+              placeholder="Search uplifting stories…"
+              className="input w-full sm:w-80"
+              aria-label="Search stories"
+            />
+            <button className="btn" type="submit">
+              Search
+            </button>
+            {hasQuery && (
+              <Link
+                href={mode ? `/?mode=${mode}` : "/"}
+                className="text-sm text-neutral-500 underline whitespace-nowrap"
+                aria-label="Clear search"
+              >
+                Clear
+              </Link>
+            )}
+          </form>
+
+          {/* Region toggle */}
+          <div className="sm:ml-6">
+            <FeedToggle hasCity={hasCity} hasState={hasState} />
+          </div>
+        </header>
+
+        {/* Hint to encourage setting location */}
+        {!(hasCity || hasState) && <LocalSetupBanner />}
+
+        {/* Search results (if any) */}
+        {hasQuery && (
+          <section className="space-y-3">
+            <div className="flex items-baseline justify-between">
+              <h3 className="text-lg font-semibold">Search results for “{q}”</h3>
+              <p className="text-xs text-neutral-500">
+                {searchMode === "vector" ? "AI semantic search" : "Keyword search"}
+              </p>
+            </div>
+
+            {searchResults.length > 0 ? (
+              <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {searchResults.map((s: any) => (
+                  <StoryCard key={s.slug ?? s.id} s={s} />
+                ))}
+              </ul>
+            ) : (
+              <div className="text-sm text-neutral-500">
+                No matches found. Try different keywords or{" "}
+                <Link href={mode ? `/?mode=${mode}` : "/"} className="underline">
+                  browse recent stories
+                </Link>
+                .
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Main feed grid */}
+        <section className="space-y-3">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-lg font-semibold">Featured in this view</h3>
+            <p className="text-xs text-neutral-500">Region: {mode.toUpperCase()}</p>
+          </div>
+
+          {items.length > 0 ? (
             <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {searchResults.map((s: any) => (
-                <StoryCard key={s.slug ?? s.id} s={s} />
+              {items.map((s: any) => (
+                <StoryCard key={s.slug} s={s} />
               ))}
             </ul>
           ) : (
             <div className="text-sm text-neutral-500">
-              No matches found. Try different keywords or{" "}
-              <Link href={mode ? `/?mode=${mode}` : "/"} className="underline">
-                browse recent stories
-              </Link>
+              No stories yet for this view. Try switching to{" "}
+              <a className="underline" href="/?mode=all">
+                All
+              </a>
               .
             </div>
           )}
         </section>
-      )}
 
-      {/* Main feed grid */}
-      <section className="space-y-3">
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-lg font-semibold">Featured in this view</h3>
-          <p className="text-xs text-neutral-500">Region: {mode.toUpperCase()}</p>
-        </div>
-
-        {items.length > 0 ? (
-          <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {items.map((s: any) => (
-              <StoryCard key={s.slug} s={s} />
-            ))}
-          </ul>
-        ) : (
-          <div className="text-sm text-neutral-500">
-            No stories yet for this view. Try switching to{" "}
-            <a className="underline" href="/?mode=all">
-              All
-            </a>
-            .
-          </div>
-        )}
-      </section>
-
-      {/* Personalized rail (optional, only when we have recs) */}
-      {uniqueRecs.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex items-baseline justify-between">
-            <h3 className="text-lg font-semibold">
-              Recommended for {profile?.state ? `you in ${profile.state}` : "you"}
-            </h3>
-            <p className="text-xs text-neutral-500">
-              Based on what’s popular and your region
-            </p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {uniqueRecs.map((r: any) => (
-              <Link key={r.id} href={`/story/${r.slug}`} className="card overflow-hidden">
-                {r.hero_image && (
-                  <div className="relative aspect-[16/9] bg-neutral-100">
-                    <Image
-                      src={r.hero_image}
-                      alt={r.title}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 768px) 100vw, 33vw"
-                    />
+        {/* Personalized rail (optional, only when we have recs) */}
+        {uniqueRecs.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-baseline justify-between">
+              <h3 className="text-lg font-semibold">
+                Recommended for {profile?.state ? `you in ${profile.state}` : "you"}
+              </h3>
+              <p className="text-xs text-neutral-500">
+                Based on what’s popular and your region
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {uniqueRecs.map((r: any) => (
+                <Link key={r.id} href={`/story/${r.slug}`} className="group overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition">
+                  {r.hero_image && (
+                    <div className="relative aspect-[16/9] bg-neutral-100 overflow-hidden">
+                      <Image
+                        src={r.hero_image}
+                        alt={r.title}
+                        fill
+                        className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                        sizes="(max-width: 768px) 100vw, 33vw"
+                      />
+                    </div>
+                  )}
+                  <div className="p-4">
+                    <div className="text-xs text-neutral-500">{r.city ?? r.state ?? "—"}</div>
+                    <h4 className="font-medium leading-snug line-clamp-2">{r.title}</h4>
                   </div>
-                )}
-                <div className="p-4">
-                  <div className="text-xs text-neutral-500">{r.city ?? r.state ?? "—"}</div>
-                  <h4 className="font-medium line-clamp-2">{r.title}</h4>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
-      {/* Trigger Next.js prefetch for visible stories once grid enters viewport */}
-      <PrefetchStories hrefs={prefetchList} max={24} />
-    </div>
+        {/* Trigger Next.js prefetch for visible stories once grid enters viewport */}
+        <PrefetchStories hrefs={prefetchList} max={24} />
+      </div>
+    </>
   );
 }
