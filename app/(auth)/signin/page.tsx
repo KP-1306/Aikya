@@ -13,13 +13,26 @@ export default function SignInPage() {
   const [loading, setLoading] = useState<null | "pwd" | "magic">(null);
   const [message, setMessage] = useState<string | null>(q.get("error") || null);
 
-  // Compute once; NEXT_PUBLIC_* gets inlined at build time (safe on client)
-  const redirectTo = useMemo(() => {
-    const site =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      (typeof window !== "undefined" ? window.location.origin : "");
-    return `${site.replace(/\/$/, "")}/auth/callback`;
-  }, []);
+  // Where to send the user AFTER the callback finishes (home by default).
+  const redirectAfter = useMemo(
+    () => q.get("redirectTo") || "/",
+    [q]
+  );
+
+  // Absolute origin for email redirect (env → window fallback)
+  const origin = useMemo(
+    () =>
+      (process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "")) ||
+      (typeof window !== "undefined" ? window.location.origin : ""),
+    []
+  );
+
+  // The URL the magic link should open → our callback page (it will read ?code= and then
+  // forward to redirectAfter).
+  const emailRedirectTo = useMemo(
+    () => `${origin}/auth/callback?redirectTo=${encodeURIComponent(redirectAfter)}`,
+    [origin, redirectAfter]
+  );
 
   const handlePassword = useCallback(
     async (e: React.FormEvent) => {
@@ -35,7 +48,7 @@ export default function SignInPage() {
           setMessage(error.message);
           return;
         }
-        router.replace("/");
+        router.replace(redirectAfter);
         router.refresh();
       } catch (err: any) {
         setMessage(err?.message || "Something went wrong. Please try again.");
@@ -43,7 +56,7 @@ export default function SignInPage() {
         setLoading(null);
       }
     },
-    [email, password, router]
+    [email, password, router, redirectAfter]
   );
 
   const handleMagicLink = useCallback(
@@ -62,9 +75,8 @@ export default function SignInPage() {
         const { error } = await supabase.auth.signInWithOtp({
           email: normalizedEmail,
           options: {
-            emailRedirectTo: redirectTo,
-            // optional: let users sign up via magic link if they don't exist
-            shouldCreateUser: true,
+            emailRedirectTo,        // 🔑 land on /auth/callback with redirectAfter param
+            shouldCreateUser: true, // allow sign-up if user doesn’t exist
           },
         });
         if (error) setMessage(error.message);
@@ -75,7 +87,7 @@ export default function SignInPage() {
         setLoading(null);
       }
     },
-    [email, redirectTo]
+    [email, emailRedirectTo]
   );
 
   return (
@@ -123,7 +135,7 @@ export default function SignInPage() {
 
         <button
           type="submit"
-          disabled={loading !== null} /* prevent double submits */
+          disabled={loading !== null}
           className="w-full rounded-md bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
         >
           {loading === "pwd" ? "Signing in…" : "Sign in"}
@@ -152,7 +164,7 @@ export default function SignInPage() {
       </p>
 
       <p className="mt-2 text-sm">
-        <a href="/" className="underline">Continue as guest</a>
+        <a href={redirectAfter} className="underline">Continue as guest</a>
       </p>
     </main>
   );
