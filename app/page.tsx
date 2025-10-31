@@ -2,7 +2,7 @@
 import Link from "next/link";
 import Image from "next/image";
 
-import FeaturedHero from "@/components/FeaturedHero"; // NEW: the hero/weekly-best section
+import FeaturedHero from "@/components/FeaturedHero";
 import { getStories } from "@/lib/data";
 import { getCurrentUserRegion } from "@/lib/user";
 import FeedToggle from "@/components/FeedToggle";
@@ -19,10 +19,13 @@ type SearchResponse = {
   error?: string | null;
 };
 
-// Refined story card (used in feed + search results)
+// Small, reusable card
 function StoryCard({ s }: { s: any }) {
   return (
-    <li key={s.slug ?? s.id} className="group overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition">
+    <li
+      key={s.slug ?? s.id}
+      className="group overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md"
+    >
       <Link href={`/story/${s.slug}`} className="block">
         <div className="relative w-full aspect-[16/9] bg-neutral-100 overflow-hidden">
           {s.hero_image ? (
@@ -34,14 +37,18 @@ function StoryCard({ s }: { s: any }) {
               sizes="(max-width: 768px) 100vw, 33vw"
             />
           ) : (
-            <div className="absolute inset-0 grid place-items-center text-neutral-400 text-sm">Aikya</div>
+            <div className="absolute inset-0 grid place-items-center text-neutral-400 text-sm">
+              Aikya
+            </div>
           )}
         </div>
         <div className="p-4">
           <div className="text-xs text-neutral-500">
             {(s.city || s.state || s.country) ?? "—"} · {s.read_minutes ?? 3} min
           </div>
-          <h3 className="mt-1 font-semibold leading-snug line-clamp-2">{s.title}</h3>
+          <h3 className="mt-1 font-semibold leading-snug line-clamp-2">
+            {s.title}
+          </h3>
           {s.dek && (
             <p className="text-sm text-neutral-600 line-clamp-2 mt-1">{s.dek}</p>
           )}
@@ -60,20 +67,36 @@ function getOrigin() {
   return "http://localhost:3000";
 }
 
-export default async function Home({ searchParams }: { searchParams: SearchParams }) {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   // 0) Optional search query (from GET ?q=)
   const q = (searchParams.q ?? "").trim();
   const hasQuery = q.length > 0;
 
-  // 1) Region info (from your helper)
+  // 1) Region info
   const profile = await getCurrentUserRegion();
   const hasCity = !!profile?.city;
   const hasState = !!profile?.state;
 
-  // 2) Mode: default City → State → All
-  const modeParam = searchParams.mode as "city" | "state" | "all" | undefined;
+  // 2) Requested mode vs effective mode
+  const requested =
+    (searchParams.mode as "city" | "state" | "all" | undefined) ??
+    (hasCity ? "city" : hasState ? "state" : "all");
+
+  // Auto-fallback so “city/state” doesn’t accidentally show ALL when user hasn’t set location
   const mode: "city" | "state" | "all" =
-    modeParam || (hasCity ? "city" : hasState ? "state" : "all");
+    requested === "city" && !hasCity
+      ? hasState
+        ? "state"
+        : "all"
+      : requested === "state" && !hasState
+      ? hasCity
+        ? "city"
+        : "all"
+      : requested;
 
   // 3) Filters for main feed
   const city = mode === "city" && hasCity ? profile!.city : undefined;
@@ -87,6 +110,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const {
     data: { user },
   } = await sb.auth.getUser();
+
   const recs = (await getRecommendations({
     userId: user?.id,
     state: profile?.state,
@@ -127,13 +151,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       if (res.ok && Array.isArray(j.data)) {
         searchResults = j.data;
         searchMode = j.mode;
-      } else {
-        searchResults = [];
-        searchMode = undefined;
       }
     } catch {
-      searchResults = [];
-      searchMode = undefined;
+      // swallow – show empty state below
     }
   }
 
@@ -144,10 +164,20 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   ];
   const prefetchList = Array.from(new Set(prefetchHrefs));
 
+  // Derived label for the main grid
+  const regionLabel =
+    mode === "city" ? "CITY" : mode === "state" ? "STATE" : "ALL";
+
+  const mainTitle =
+    mode === "city" && city
+      ? `Stories in ${city}`
+      : mode === "state" && state
+      ? `Stories in ${state}`
+      : "Latest from across India";
+
   return (
     <>
       {/* Weekly-best hero with live stats */}
-      {/* FeaturedHero is a Server Component; safe to render here */}
       <FeaturedHero />
 
       <div className="container space-y-8">
@@ -158,28 +188,43 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             <p className="text-sm text-neutral-600">{sub}</p>
           </div>
 
-          {/* Search (GET) – preserves mode via hidden input */}
-          <form method="GET" className="flex items-center gap-2 w-full sm:w-auto">
+          {/* Search (GET) – preserves mode via hidden input (polished UI) */}
+          <form method="GET" className="w-full sm:w-auto">
             <input type="hidden" name="mode" value={mode} aria-hidden="true" />
-            <input
-              name="q"
-              defaultValue={q}
-              placeholder="Search uplifting stories…"
-              className="input w-full sm:w-80"
-              aria-label="Search stories"
-            />
-            <button className="btn" type="submit">
-              Search
-            </button>
-            {hasQuery && (
-              <Link
-                href={mode ? `/?mode=${mode}` : "/"}
-                className="text-sm text-neutral-500 underline whitespace-nowrap"
-                aria-label="Clear search"
-              >
-                Clear
-              </Link>
-            )}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 sm:w-80">
+                <input
+                  name="q"
+                  defaultValue={q}
+                  placeholder="Search uplifting stories…"
+                  className="w-full rounded-full border border-neutral-300 bg-white px-4 py-2 pl-10 text-sm outline-none focus:border-neutral-400"
+                  aria-label="Search stories"
+                />
+                <svg
+                  aria-hidden
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </div>
+              <button className="rounded-full border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50">
+                Search
+              </button>
+              {hasQuery && (
+                <Link
+                  href={mode ? `/?mode=${mode}` : "/"}
+                  className="text-sm text-neutral-500 underline whitespace-nowrap"
+                  aria-label="Clear search"
+                >
+                  Clear
+                </Link>
+              )}
+            </div>
           </form>
 
           {/* Region toggle */}
@@ -222,8 +267,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         {/* Main feed grid */}
         <section className="space-y-3">
           <div className="flex items-baseline justify-between">
-            <h3 className="text-lg font-semibold">Featured in this view</h3>
-            <p className="text-xs text-neutral-500">Region: {mode.toUpperCase()}</p>
+            <h3 className="text-lg font-semibold">
+              {mainTitle}{" "}
+              <span className="text-xs text-neutral-500 font-normal">
+                ({items.length})
+              </span>
+            </h3>
+            <p className="text-xs text-neutral-500">Region: {regionLabel}</p>
           </div>
 
           {items.length > 0 ? (
@@ -256,7 +306,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {uniqueRecs.map((r: any) => (
-                <Link key={r.id} href={`/story/${r.slug}`} className="group overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm hover:shadow-md transition">
+                <Link
+                  key={r.id}
+                  href={`/story/${r.slug}`}
+                  className="group overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md"
+                >
                   {r.hero_image && (
                     <div className="relative aspect-[16/9] bg-neutral-100 overflow-hidden">
                       <Image
@@ -269,8 +323,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                     </div>
                   )}
                   <div className="p-4">
-                    <div className="text-xs text-neutral-500">{r.city ?? r.state ?? "—"}</div>
-                    <h4 className="font-medium leading-snug line-clamp-2">{r.title}</h4>
+                    <div className="text-xs text-neutral-500">
+                      {r.city ?? r.state ?? "—"}
+                    </div>
+                    <h4 className="font-medium leading-snug line-clamp-2">
+                      {r.title}
+                    </h4>
                   </div>
                 </Link>
               ))}
