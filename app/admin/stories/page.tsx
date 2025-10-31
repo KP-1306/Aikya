@@ -21,6 +21,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminStoriesPage() {
   const sb = supabaseServer();
+  const sba = sb as any; // ✅ cast once, then use plain .from("table")
 
   // Must be signed in
   const {
@@ -43,16 +44,16 @@ export default async function AdminStoriesPage() {
     // fallback to role tables
     let role: string | null = null;
 
-    const up = await sb
-      .from("user_profiles" as any)
+    const up = await sba
+      .from("user_profiles")
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
     if (!up.error) role = (up.data as any)?.role ?? null;
 
     if (!role) {
-      const pf = await sb
-        .from("profiles" as any)
+      const pf = await sba
+        .from("profiles")
         .select("role")
         .eq("id", user.id)
         .maybeSingle();
@@ -65,8 +66,8 @@ export default async function AdminStoriesPage() {
   }
 
   // Admin list: drafts + published (RLS should allow admin access)
-  const { data, error } = await sb
-    .from("stories" as any)
+  const { data, error } = await sba
+    .from("stories")
     .select(
       "id, slug, title, state, city, is_published, published_at, created_at"
     )
