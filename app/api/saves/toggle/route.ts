@@ -4,17 +4,9 @@ import { cookies, headers } from "next/headers";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireSupabaseService } from "@/lib/supabase/service";
 import { awardKarma } from "@/lib/karma/server";
-// If KarmaReason is exported, you can uncomment this and remove `as any` below.
-// import type { KarmaReason } from "@/lib/karma/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-// Builds a reason object for story saves; cast to KarmaReason to satisfy TS.
-function buildStoryReason(storyId: string) {
-  // Try to align with common shapes: entity + snake_case id.
-  return { entity: "story", story_id: storyId } as any; // <— if you export KarmaReason, cast to `as KarmaReason`
-}
 
 export async function POST(req: Request) {
   try {
@@ -80,14 +72,18 @@ export async function POST(req: Request) {
       // ignore analytics errors
     }
 
-    // Karma (best-effort)
+    // Karma (best-effort) — uses (supa, userId, delta, reason, meta?)
     if (saved) {
       try {
-        await awardKarma(user.id, "save", 1, buildStoryReason(storyId));
+        await awardKarma(supabaseService, user.id, 1, "story_saved", { story_id: storyId });
       } catch {
         // ignore karma errors
       }
     }
+    // Optional: penalize unsave
+    // else {
+    //   try { await awardKarma(supabaseService, user.id, -1, "admin_adjust", { story_id: storyId, note: "unsave" }); } catch {}
+    // }
 
     return NextResponse.json({ saved, saveCount });
   } catch (e: any) {
