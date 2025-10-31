@@ -1,1 +1,93 @@
-'use client';import { useState, useEffect } from 'react';import { setRegionPref, getRegionPref } from '@/lib/region';export default function RegionPicker(){const[open,setOpen]=useState(false);const[country,setCountry]=useState('IN');const[state,setState]=useState('Delhi');const[skipped,setSkipped]=useState(false);useEffect(()=>{const pref=getRegionPref();if(!pref.state)setOpen(true);},[]);if(!open||skipped)return null;return(<div className='fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4'><div className='card max-w-md w-full p-5'><h3 className='text-lg font-semibold mb-2'>Help us show good news around you</h3><p className='text-sm text-neutral-600 mb-4'>We only use your state to personalize your feed. Not your exact location.</p><div className='grid grid-cols-2 gap-3'><div><label className='text-xs text-neutral-500'>Country</label><select value={country} onChange={e=>setCountry(e.target.value)} className='w-full border rounded-xl px-3 py-2'><option value='IN'>India</option><option value='US'>United States</option><option value='GB'>United Kingdom</option></select></div><div><label className='text-xs text-neutral-500'>State/UT</label><input value={state} onChange={e=>setState(e.target.value)} className='w-full border rounded-xl px-3 py-2' placeholder='e.g., Delhi'/></div></div><div className='flex gap-3 mt-4 justify-end'><button className='px-3 py-2' onClick={()=>{setSkipped(true);setOpen(false);}}>Skip for now</button><button className='bg-brand text-white rounded-xl px-4 py-2' onClick={()=>{setRegionPref({country,state});setOpen(false);location.reload();}}>Continue with my state</button></div></div></div>); }
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+type Props = {
+  initialCity?: string | null;
+  initialState?: string | null;
+};
+
+export default function RegionPicker({ initialCity, initialState }: Props) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [city, setCity] = useState(initialCity ?? "");
+  const [state, setState] = useState(initialState ?? "");
+  const [saving, setSaving] = useState(false);
+  const label =
+    city && state ? `${city}, ${state}` :
+    city ? city :
+    state ? state :
+    "Set location";
+
+  async function save() {
+    setSaving(true);
+    const res = await fetch("/api/profile/region", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ city, state }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      setOpen(false);
+      router.refresh(); // refresh server components that depend on profile
+    } else {
+      const j = await res.json().catch(() => ({}));
+      alert(j?.error || "Could not save location");
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        className="btn !py-2 !px-3"
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+      >
+        {label}
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="absolute right-0 z-50 mt-2 w-72 rounded-2xl border border-neutral-200 bg-white p-3 shadow-lg"
+        >
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs text-neutral-600">City</label>
+              <input
+                className="input w-full"
+                placeholder="e.g., Haldwani"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-neutral-600">State</label>
+              <input
+                className="input w-full"
+                placeholder="e.g., Uttarakhand"
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button className="text-sm text-neutral-600" type="button" onClick={() => setOpen(false)}>
+                Cancel
+              </button>
+              <button className="btn" type="button" onClick={save} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+            <p className="text-[11px] text-neutral-500">
+              Tip: Choose <b>City</b> or <b>State</b> above in the feed to filter by what you set here.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
