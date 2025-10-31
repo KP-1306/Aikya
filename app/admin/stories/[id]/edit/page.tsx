@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 
 async function assertAdminOrOwner() {
   const sb = supabaseServer();
+  const sba = sb as any; // cast the client to avoid Postgrest TS overload issues
 
   // Must be signed in
   const { data: userRes } = await sb.auth.getUser();
@@ -25,16 +26,16 @@ async function assertAdminOrOwner() {
   // Fallback: user_profiles → profiles
   let role: string | null = null;
 
-  const up = await sb
-    .from("user_profiles" as any)
+  const up = await sba
+    .from("user_profiles")
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
   if (!up.error) role = (up.data as any)?.role ?? null;
 
   if (!role) {
-    const pf = await sb
-      .from("profiles" as any)
+    const pf = await sba
+      .from("profiles")
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
@@ -48,11 +49,13 @@ async function assertAdminOrOwner() {
 
 export default async function EditStoryPage({ params }: { params: { id: string } }) {
   await assertAdminOrOwner();
+
   const sb = supabaseServer();
+  const sba = sb as any; // cast for all .from(...) calls
 
   // Load story for edit
-  const { data } = await sb
-    .from("stories" as any)
+  const { data } = await sba
+    .from("stories")
     .select("*")
     .eq("id", params.id)
     .maybeSingle();
