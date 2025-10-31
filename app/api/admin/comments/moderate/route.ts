@@ -11,23 +11,23 @@ type AdminAction = "approve" | "hide" | "ban_user";
 // Robust admin check: try RPC is_admin(); fallback to profiles.role === 'admin'
 async function checkIsAdmin() {
   const sb = supabaseServer();
+  const sba = sb as any; // ← one-time cast to avoid Next/Netlify TS union issue
 
   // Must be signed in
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
+  const { data: userRes } = await sba.auth.getUser();
+  const user = userRes?.user;
   if (!user) return false;
 
   // Prefer RPC if present
   try {
-    const { data, error } = await sb.rpc("is_admin").single();
+    const { data, error } = await sba.rpc("is_admin").single();
     if (!error && data === true) return true;
   } catch {
     // ignore; fall back to profile check
   }
 
   // Fallback: profiles.role
-  const { data: profile } = await sb
+  const { data: profile } = await sba
     .from("profiles")
     .select("role")
     .eq("id", user.id)
@@ -78,14 +78,15 @@ export async function POST(req: Request) {
 
   // Execute moderation via service role (bypass RLS)
   const svc = requireSupabaseService();
-  const { error } = await svc.rpc("admin_moderate_comment", {
+  const svca = svc as any; // optional cast for consistency
+
+  const { error } = await svca.rpc("admin_moderate_comment", {
     comment_id: payload.id,
     action_in: payload.action,
   });
 
   if (error) {
     const msg = error.message || "Moderation failed";
-    // Return JSON for API callers; otherwise show a simple redirect with error
     if (!wantsHtml(req)) return NextResponse.json({ error: msg }, { status: 500 });
     const url = new URL("/admin/(content)/flags?error=1", req.url);
     return NextResponse.redirect(url);
