@@ -104,13 +104,13 @@ export default async function AdminContentHome() {
 }
 
 /**
- * Server-side guard:
- * 1) Prefer RPC is_admin() returning boolean (ignore failure cleanly)
+ * Server-side guard (TS-safe for Netlify):
+ * 1) Prefer RPC is_admin() (ignore failure cleanly — some envs return scalars or objects)
  * 2) Fallback to role from user_profiles, then profiles
  * 3) Redirect if not admin/owner
  */
 async function assertAdminOrOwner() {
-  const sb = supabaseServer();
+  const sb: any = supabaseServer(); // cast to avoid union-callable TS error
 
   // Ensure we have a signed-in user
   const { data: userRes } = await sb.auth.getUser();
@@ -118,38 +118,40 @@ async function assertAdminOrOwner() {
   if (!user) redirect("/signin");
 
   // 1) Try RPC is_admin()
-  let isAdmin: boolean | null = null;
   try {
-    // .single() returns { data, error }; no .catch() chaining needed
-    const { data, error } = await sb.rpc("is_admin").single();
-    if (!error) {
-      // RPC often returns a scalar; cast safely
-      isAdmin = (data as unknown as boolean) ?? null;
-    }
+    const { data: rpcData } = await sb.rpc("is_admin");
+    // Handle different shapes: boolean, 't'/'f', or { is_admin: boolean }
+    const rpcBool =
+      rpcData === true ||
+      rpcData === "t" ||
+      (rpcData && typeof rpcData === "object" && (rpcData.is_admin === true || rpcData.is_admin === "t"));
+    if (rpcBool) return;
   } catch {
-    // swallow; we'll fall back to role checks
+    // swallow; we'll fall back below
   }
-  if (isAdmin === true) return;
 
   // 2) Fallback: role from user_profiles, then profiles
   let role: string | null = null;
 
-  // Try user_profiles first
   const up = await sb
     .from("user_profiles")
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
-  if (!up.error) role = (up.data as any)?.role ?? null;
 
-  // Fallback to profiles if user_profiles isn’t present
+  if (!up?.error && up?.data) {
+    role = (up.data as any).role ?? null;
+  }
+
   if (!role) {
     const pf = await sb
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
-    if (!pf.error) role = (pf.data as any)?.role ?? null;
+    if (!pf?.error && pf?.data) {
+      role = (pf.data as any).role ?? null;
+    }
   }
 
   if (role === "admin" || role === "owner") return;
