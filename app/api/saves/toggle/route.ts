@@ -3,10 +3,10 @@ import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireSupabaseService } from "@/lib/supabase/service";
-
 import { awardKarma } from "@/lib/karma/server"; // ✅ correct alias
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
@@ -36,10 +36,7 @@ export async function POST(req: Request) {
 
     let saved: boolean;
     if (existing) {
-      const { error } = await supabaseService
-        .from("saves")
-        .delete()
-        .eq("id", existing.id);
+      const { error } = await supabaseService.from("saves").delete().eq("id", existing.id);
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       saved = false;
     } else {
@@ -78,17 +75,19 @@ export async function POST(req: Request) {
     // Karma (best-effort)
     if (saved) {
       try {
-        await awardKarma(user.id, "save", { storyId });
+        // FIX: awardKarma expects 4–5 args → include a points value (e.g., +1)
+        await awardKarma(user.id, "save", 1, { storyId });
       } catch {
         // ignore karma errors
       }
     }
+    // (Optional) if you want to penalize unsave:
+    // else {
+    //   try { await awardKarma(user.id, "unsave", -1, { storyId }); } catch {}
+    // }
 
     return NextResponse.json({ saved, saveCount });
   } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message || "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
 }
