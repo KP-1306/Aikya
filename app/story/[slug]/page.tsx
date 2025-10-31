@@ -176,10 +176,10 @@ export default async function StoryPage({ params }: { params: { slug: string } }
       </article>
 
       {/* Proof-of-Good panel (client-only) */}
-      <div className="container max-w-2xl mt-8">
-        {/* @ts-expect-error dynamic client component */}
-        <ProofPanel storyId={s.id as string} />
-      </div>
+<div className="container max-w-2xl mt-8">
+  <ProofPanel storyId={s.id as string} />
+</div>
+
 
       {/* Comments */}
       <div className="container max-w-2xl">
