@@ -3,17 +3,26 @@ import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const metadata = { title: "Admin · Flags" };
+export const dynamic = "force-dynamic";
 
-async function isAdmin(sb: ReturnType<typeof supabaseServer>) {
+/** Centralized, safe admin check (no union types; uses maybeSingle) */
+async function isAdmin(): Promise<boolean> {
+  const sb = supabaseServer();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return false;
-  const { data: profile } = await sb.from("profiles").select("role").eq("id", user.id).single();
+
+  const { data: profile } = await sb
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle(); // avoid .single() overload issues
+
   return profile?.role === "admin";
 }
 
 export default async function AdminFlags() {
-  const sb = supabaseServer();
-  if (!(await isAdmin(sb))) {
+  // Gate early (don’t construct heavy queries if not admin)
+  if (!(await isAdmin())) {
     return (
       <div className="container space-y-3">
         <h1 className="text-xl font-semibold">Not authorized</h1>
@@ -23,11 +32,25 @@ export default async function AdminFlags() {
     );
   }
 
-  // Fetch comments likely flagged: either is_flagged=true OR flags_count>0.
-  // Using OR keeps it schema-tolerant for your existing comments model.
+  const sb = supabaseServer();
+
+  // Pull flagged comments. The join alias is kept schema-tolerant.
   const { data: comments, error } = await sb
     .from("comments")
-    .select("id, body, created_at, user_id, story_id, is_flagged, flags_count, status, story:stories(slug,title)")
+    .select(`
+      id,
+      body,
+      created_at,
+      user_id,
+      story_id,
+      is_flagged,
+      flags_count,
+      status,
+      story:stories (
+        slug,
+        title
+      )
+    `)
     .or("is_flagged.eq.true,flags_count.gt.0")
     .order("created_at", { ascending: false })
     .limit(100);
@@ -35,7 +58,9 @@ export default async function AdminFlags() {
   if (error) {
     return (
       <div className="container">
-        <p className="text-sm text-red-600">Failed to load flagged comments: {error.message}</p>
+        <p className="text-sm text-red-600">
+          Failed to load flagged comments: {error.message}
+        </p>
       </div>
     );
   }
@@ -46,7 +71,10 @@ export default async function AdminFlags() {
     <div className="container space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">Flagged comments</h1>
-        <p className="text-sm text-neutral-600">Review and take quick actions. Approve clears flags. Hide removes from public view. Ban blocks future posting (if your schema supports it).</p>
+        <p className="text-sm text-neutral-600">
+          Review and take quick actions. Approve clears flags. Hide removes from public
+          view. Ban blocks future posting (if your schema supports it).
+        </p>
       </header>
 
       {rows.length === 0 ? (
@@ -65,9 +93,13 @@ export default async function AdminFlags() {
                   <span className="text-neutral-500">unknown</span>
                 )}
               </div>
+
               <div className="text-sm whitespace-pre-wrap">{c.body}</div>
+
               <div className="text-xs text-neutral-500">
-                {new Date(c.created_at).toLocaleString()} • user {c.user_id?.slice(0, 8)}… • status: {c.status ?? "—"} • flags: {c.flags_count ?? (c.is_flagged ? 1 : 0)}
+                {new Date(c.created_at).toLocaleString()} • user{" "}
+                {c.user_id ? `${String(c.user_id).slice(0, 8)}…` : "—"} • status:{" "}
+                {c.status ?? "—"} • flags: {c.flags_count ?? (c.is_flagged ? 1 : 0)}
               </div>
 
               <div className="flex items-center gap-3">
