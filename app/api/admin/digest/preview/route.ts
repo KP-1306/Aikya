@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function htmlShell(inner: string) {
   return new Response(inner, {
@@ -29,18 +30,46 @@ function digestHtml(items: any[], site: string, range: string) {
 </body></html>`;
 }
 
-async function isAdmin() {
+async function isAdminOrOwner(): Promise<boolean> {
   const sb = supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+
+  // Must be signed in
+  const { data: userRes } = await sb.auth.getUser();
+  const user = userRes?.user;
   if (!user) return false;
-  const { data } = await sb.rpc("is_admin").single().catch(() => ({ data: null }));
-  if (data === true) return true;
-  const { data: prof } = await sb.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  return prof?.role === "admin";
+
+  // Try RPC is_admin() first
+  try {
+    const { data, error } = await sb.rpc("is_admin").single();
+    if (!error && (data as unknown as boolean) === true) return true;
+  } catch {
+    // ignore; fall back to role tables
+  }
+
+  // Fallback role from user_profiles then profiles
+  let role: string | null = null;
+
+  const up = await sb
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!up.error) role = (up.data as any)?.role ?? null;
+
+  if (!role) {
+    const pf = await sb
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!pf.error) role = (pf.data as any)?.role ?? null;
+  }
+
+  return role === "admin" || role === "owner";
 }
 
 export async function GET() {
-  if (!(await isAdmin())) {
+  if (!(await isAdminOrOwner())) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -48,7 +77,7 @@ export async function GET() {
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ||
     "https://aikyanow.netlify.app";
 
-  // mock last 7d preview via anon client is fine (published only)
+  // mock last 7d preview via anon server client (published only)
   const sb = supabaseServer();
   const { data } = await sb
     .from("stories")
