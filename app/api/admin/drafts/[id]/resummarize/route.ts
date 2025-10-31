@@ -4,14 +4,24 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { requireSupabaseService } from "@/lib/supabase/service";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+type Ctx = { params: { id: string } };
+
+export async function POST(_req: Request, { params }: Ctx) {
   const sb = supabaseServer();
   const svc = requireSupabaseService();
 
-  const { data: isAdmin } = await sb.rpc("is_admin").single().catch(() => ({ data: false }));
+  // ---- Must be signed in
+  const { data: userRes } = await sb.auth.getUser();
+  const user = userRes?.user;
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // ---- Admin/Owner gate (no .catch chaining)
+  const isAdmin = await isAdminOrOwner(sb, user.id);
   if (!isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+  // ---- Load the draft (service role read is fine here)
   const { data: draft, error } = await svc
     .from("ingest_drafts")
     .select("id, source_url")
@@ -22,20 +32,30 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Draft not found or missing source_url" }, { status: 404 });
   }
 
-  // Call your existing preview endpoint to regenerate normalized JSON
-  const resp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/api/admin/ingest/preview?url=${encodeURIComponent(draft.source_url)}`, {
-    cache: "no-store",
-  });
+  // ---- Call preview endpoint to regenerate normalized JSON
+  const base =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ||
+    "https://aikyanow.netlify.app";
 
-  if (!resp.ok) {
-    return NextResponse.json({ error: `Preview failed (${resp.status})` }, { status: 500 });
+  const previewUrl = `${base}/api/admin/ingest/preview?url=${encodeURIComponent(
+    draft.source_url
+  )}`;
+
+  let json: any = null;
+  try {
+    const resp = await fetch(previewUrl, { cache: "no-store" });
+    if (!resp.ok) {
+      return NextResponse.json({ error: `Preview failed (${resp.status})` }, { status: 500 });
+    }
+    json = await resp.json();
+  } catch {
+    return NextResponse.json({ error: "Preview request failed" }, { status: 500 });
   }
 
-  const json = await resp.json();
   const norm = json?.data ?? null;
-
   if (!norm) return NextResponse.json({ error: "No normalized data" }, { status: 500 });
 
+  // ---- Update the draft with normalized fields
   const up = await svc
     .from("ingest_drafts")
     .update({
@@ -56,4 +76,36 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (up.error) return NextResponse.json({ error: up.error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
+}
+
+// ----------------- helpers -----------------
+async function isAdminOrOwner(sb: ReturnType<typeof supabaseServer>, userId: string): Promise<boolean> {
+  // Try RPC is_admin() first
+  try {
+    const { data, error } = await sb.rpc("is_admin").single();
+    if (!error && (data as unknown as boolean) === true) return true;
+  } catch {
+    // ignore and fall back to role checks
+  }
+
+  // Fallback: role from user_profiles, then profiles
+  let role: string | null = null;
+
+  const up = await sb
+    .from("user_profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!up.error) role = (up.data as any)?.role ?? null;
+
+  if (!role) {
+    const pf = await sb
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!pf.error) role = (pf.data as any)?.role ?? null;
+  }
+
+  return role === "admin" || role === "owner";
 }
