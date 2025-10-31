@@ -4,8 +4,10 @@ import { cookies, headers } from "next/headers";
 import { rateLimit } from "@/lib/rateLimit";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireSupabaseService } from "@/lib/supabase/service";
+import { awardKarma } from "@/lib/karma/server";
 
-import { awardKarma } from "@/lib/karma";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
@@ -14,21 +16,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing storyId" }, { status: 400 });
     }
 
-    const supabaseService = requireSupabaseService();
+    const svc = requireSupabaseService();
 
-    // 🔒 Rate limit: 60 like toggles per minute per anon id
+    // 🔒 Rate limit: 60 like toggles / minute / anon id
     const aid = cookies().get("aid")?.value || "anon";
     const ok = await rateLimit(`${aid}:likes_toggle`, 60, 60_000);
     if (!ok) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
 
     // Auth
-    const { data: { user } } = await supabaseServer().auth.getUser();
+    const sb = supabaseServer();
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    await awardKarma(user.id, "like", { storyId });
-    
-    // Toggle like: if exists → delete; else → insert
-    const { data: existing, error: getErr } = await supabaseService
+    // Toggle like
+    const { data: existing, error: getErr } = await svc
       .from("likes")
       .select("id")
       .eq("story_id", storyId)
@@ -37,17 +40,12 @@ export async function POST(req: Request) {
     if (getErr) return NextResponse.json({ error: getErr.message }, { status: 400 });
 
     let liked: boolean;
-
     if (existing) {
-      const { error } = await supabaseService
-        .from("likes")
-        .delete()
-        .eq("id", existing.id);
+      const { error } = await svc.from("likes").delete().eq("id", existing.id);
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       liked = false;
     } else {
-      // insert; ignore duplicate key races
-      const { error } = await supabaseService
+      const { error } = await svc
         .from("likes")
         .insert({ story_id: storyId, user_id: user.id });
       if (error && !/duplicate key/i.test(error.message)) {
@@ -56,20 +54,20 @@ export async function POST(req: Request) {
       liked = true;
     }
 
-    // Recount likes for this story
-    const { count, error: cntErr } = await supabaseService
+    // Recount likes
+    const { count, error: cntErr } = await svc
       .from("likes")
       .select("*", { count: "exact", head: true })
       .eq("story_id", storyId);
     if (cntErr) return NextResponse.json({ error: cntErr.message }, { status: 400 });
     const likeCount = count || 0;
 
-    // 🔹 Analytics (best-effort, non-blocking)
+    // 🔹 Analytics (best-effort)
     try {
       const ref = headers().get("referer") || headers().get("referrer") || "";
       const ua = headers().get("user-agent") || "";
-      await supabaseService.from("analytics_events").insert({
-        aid,                         // if your column is anon_id, change to { anon_id: aid, ... }
+      await svc.from("analytics_events").insert({
+        anon_id: aid, // if your column is 'aid', change key to 'aid'
         kind: "like",
         story_id: storyId,
         user_id: user.id,
@@ -78,6 +76,16 @@ export async function POST(req: Request) {
       });
     } catch {
       // ignore analytics failures
+    }
+
+    // ⭐ Karma (best-effort) — only when a like is added
+    if (liked) {
+      try {
+        // awardKarma(supa, userId, delta, reason, meta?)
+        await awardKarma(svc, user.id, 1, "story_liked", { story_id: storyId });
+      } catch {
+        // ignore karma errors
+      }
     }
 
     return NextResponse.json({ liked, likeCount });
