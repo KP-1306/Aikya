@@ -10,9 +10,10 @@ type PageProps = { params: { id: string } };
 
 export default async function AdminSupportReview({ params }: PageProps) {
   const sb = supabaseServer();
+  const sba = sb as any; // ✅ cast the client once
 
-  // ---- Admin gate (safe; no .catch on PostgREST builders) ----
-  const isAdmin = await isAdminOrOwner(sb);
+  // ---- Admin gate ----
+  const isAdmin = await isAdminOrOwner(sba);
   if (!isAdmin) {
     return (
       <main className="container py-10">
@@ -25,15 +26,14 @@ export default async function AdminSupportReview({ params }: PageProps) {
     );
   }
 
-  // ---- Load the Support Action (tolerant selection) ----
-  const { data, error } = await sb
-    .from("support_actions" as any)
+  // ---- Load the Support Action ----
+  const { data, error } = await sba
+    .from("support_actions")
     .select("id,title,description,city,state,status,evidence_url,created_at,updated_at")
     .eq("id", params.id)
     .maybeSingle();
 
   if (error) {
-    // Soft-fail with a message if schema differs in this env
     return (
       <main className="container py-10">
         <h1 className="text-xl font-semibold mb-2">Support Action</h1>
@@ -48,15 +48,15 @@ export default async function AdminSupportReview({ params }: PageProps) {
   if (!data) notFound();
   const a = data as any;
 
-  // ---- Server action to update status (calls admin API that re-checks auth) ----
+  // ---- Server action to update status ----
   async function SetStatus(formData: FormData) {
     "use server";
     const status = formData.get("status")?.toString();
     if (!status) return;
 
-    // Optional: enforce admin again on the server action boundary
     const sb2 = supabaseServer();
-    const ok = await isAdminOrOwner(sb2);
+    const sba2 = sb2 as any;
+    const ok = await isAdminOrOwner(sba2);
     if (!ok) return;
 
     const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
@@ -113,33 +113,33 @@ export default async function AdminSupportReview({ params }: PageProps) {
 }
 
 // ---- helpers ----
-async function isAdminOrOwner(sb: ReturnType<typeof supabaseServer>): Promise<boolean> {
+async function isAdminOrOwner(sba: any): Promise<boolean> {
   // Ensure signed in
-  const { data: userRes } = await sb.auth.getUser();
+  const { data: userRes } = await sba.auth.getUser();
   const user = userRes?.user;
   if (!user) return false;
 
   // Try RPC is_admin() first
   try {
-    const { data, error } = await sb.rpc("is_admin").single();
+    const { data, error } = await sba.rpc("is_admin").single();
     if (!error && (data as unknown as boolean) === true) return true;
   } catch {
-    // ignore and fall back to role checks
+    // ignore and fall back
   }
 
   // Fallback: role from user_profiles, then profiles
   let role: string | null = null;
 
-  const up = await sb
-    .from("user_profiles" as any)
+  const up = await sba
+    .from("user_profiles")
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
   if (!up.error) role = (up.data as any)?.role ?? null;
 
   if (!role) {
-    const pf = await sb
-      .from("profiles" as any)
+    const pf = await sba
+      .from("profiles")
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
