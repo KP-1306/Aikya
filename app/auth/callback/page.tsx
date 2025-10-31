@@ -7,15 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      // We'll parse the URL ourselves below to support both flows.
-      detectSessionInUrl: false,
-    },
-  }
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
 export default function CallbackPage() {
@@ -25,27 +17,25 @@ export default function CallbackPage() {
   useEffect(() => {
     (async () => {
       try {
-        // --- Helpers ---
+        const redirectTo = search.get("redirectTo") || "/";
+
+        // (A) Provider or magic-link error (either in query or hash)
         const hash = typeof window !== "undefined" ? window.location.hash.replace(/^#/, "") : "";
         const hp = new URLSearchParams(hash);
-
-        // Normalize a safe redirect target (avoid open-redirects)
-        const rawRedirect = search.get("redirectTo") || "/";
-        const redirectTo = rawRedirect.startsWith("/") ? rawRedirect : "/";
-
-        // 1) Provider/magic-link error surfaced in query or hash
-        const qpErr = search.get("error") || search.get("error_description");
-        const hpErr = hp.get("error") || hp.get("error_description");
-        const err = qpErr || hpErr;
+        const err =
+          search.get("error") ||
+          search.get("error_description") ||
+          hp.get("error") ||
+          hp.get("error_description");
         if (err) {
           router.replace(`/signin?error=${encodeURIComponent(err)}`);
           return;
         }
 
-        // 2) New PKCE flow (?code=...)
+        // (B) Modern PKCE / OAuth / magic-link (code in the query)
         const code = search.get("code");
         if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession({ code });
+          const { error } = await supabase.auth.exchangeCodeForSession(code); // <-- string, not object
           if (error) {
             router.replace(`/signin?error=${encodeURIComponent(error.message)}`);
             return;
@@ -54,7 +44,7 @@ export default function CallbackPage() {
           return;
         }
 
-        // 3) Legacy hash-token flow (#access_token=...&refresh_token=...)
+        // (C) Legacy hash-token email links (older format)
         const access_token = hp.get("access_token");
         const refresh_token = hp.get("refresh_token") ?? "";
         if (access_token) {
@@ -67,13 +57,13 @@ export default function CallbackPage() {
           return;
         }
 
-        // 4) Nothing usable → bounce to signin with a friendly note
+        // (D) Nothing usable present
         router.replace(
           "/signin?error=" +
             encodeURIComponent("No auth credentials found. Please sign in again.")
         );
       } catch (e: any) {
-        router.replace("/signin?error=" + encodeURIComponent(e?.message || "Sign-in failed"));
+        router.replace("/signin?error=" + encodeURIComponent(e?.message || "Unexpected error"));
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
