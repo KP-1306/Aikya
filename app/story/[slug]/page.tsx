@@ -9,7 +9,6 @@ import { requireSupabaseService } from "@/lib/supabase/service";
 import { getReactions } from "@/lib/reactions";
 
 // Client-only Proof-of-Good panel
-const ProofPanel = dynamic(() => import("@/components/ProofPanel"), { ssr: false });
 
 const ProofPanel = NextDynamic(() => import("@/components/ProofPanel"), { ssr: false });
 
