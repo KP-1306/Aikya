@@ -2,7 +2,6 @@
 import Link from "next/link";
 import Image from "next/image";
 
-import FeaturedHero from "@/components/FeaturedHero";
 import { getStories } from "@/lib/data";
 import { getCurrentUserRegion } from "@/lib/user";
 import FeedToggle from "@/components/FeedToggle";
@@ -10,6 +9,9 @@ import LocalSetupBanner from "@/components/LocalSetupBanner";
 import { getRecommendations } from "@/lib/recs";
 import { supabaseServer } from "@/lib/supabase/server";
 import PrefetchStories from "@/components/PrefetchStories";
+
+// Optional: keep the hero commented out while we stabilize SSR
+// import FeaturedHero from "@/components/FeaturedHero";
 
 type SearchParams = { [k: string]: string | undefined };
 
@@ -67,13 +69,20 @@ function getOrigin() {
   return "http://localhost:3000";
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   // 0) Optional search query (from GET ?q=)
   const q = (searchParams.q ?? "").trim();
   const hasQuery = q.length > 0;
 
-  // 1) Region info from profile
-  const profile = await getCurrentUserRegion();
+  // 1) Region info from profile (safe)
+  let profile: { city?: string | null; state?: string | null } = {};
+  try {
+    profile = (await getCurrentUserRegion()) ?? {};
+  } catch {
+    profile = {};
+  }
   const hasCity = !!profile?.city;
   const hasState = !!profile?.state;
 
@@ -99,16 +108,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   // 3) Filters for main feed (use URL override if present)
   const city =
-    mode === "city"
-      ? cityOverride ?? (hasCity ? profile!.city : undefined)
-      : undefined;
+    mode === "city" ? (cityOverride ?? (hasCity ? profile!.city ?? undefined : undefined)) : undefined;
 
   const state =
-    mode === "state"
-      ? stateOverride ?? (hasState ? profile!.state : undefined)
-      : undefined;
+    mode === "state" ? (stateOverride ?? (hasState ? profile!.state ?? undefined : undefined)) : undefined;
 
-  // 4) Main feed stories (FAIL-SOFT)
+  // 4) Main feed stories (safe)
   let items: any[] = [];
   try {
     items = (await getStories({ city, state, limit: 24 })) ?? [];
@@ -116,26 +121,25 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     items = [];
   }
 
-  // 5) Personalized rail — uses user + (fallback) state (FAIL-SOFT)
-  let recs: any[] = [];
+  // 5) Personalized rail — uses user + (fallback) state (safe)
+  let uniqueRecs: any[] = [];
   try {
     const sb = supabaseServer();
     const {
       data: { user },
     } = await sb.auth.getUser();
-    recs =
-      ((await getRecommendations({
-        userId: user?.id,
-        state: profile?.state,
-        limit: 6,
-      })) as any[]) ?? [];
-  } catch {
-    recs = [];
-  }
 
-  // avoid showing duplicates between main grid and recs
-  const seen = new Set(items.map((s: any) => s.slug));
-  const uniqueRecs = (recs ?? []).filter((r: any) => !seen.has(r.slug));
+    const recs = (await getRecommendations({
+      userId: user?.id,
+      state: profile?.state ?? undefined,
+      limit: 6,
+    })) as any[];
+
+    const seen = new Set(items.map((s: any) => s.slug));
+    uniqueRecs = (recs ?? []).filter((r: any) => !seen.has(r.slug));
+  } catch {
+    uniqueRecs = [];
+  }
 
   // 6) Headings
   const heading =
@@ -152,7 +156,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       ? "Stories prioritized from your chosen state. Switch mode or browse another state."
       : "Uplifting stories from across India. Set your City/State to personalize.";
 
-  // 7) Server-side call to /api/search (POST) if q is present
+  // 7) Server-side call to /api/search (POST) if q is present (safe)
   let searchResults: any[] = [];
   let searchMode: "vector" | "text" | undefined;
   if (hasQuery) {
@@ -169,7 +173,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         searchMode = j.mode;
       }
     } catch {
-      // swallow – empty state below
+      searchResults = [];
+      searchMode = undefined;
     }
   }
 
@@ -181,9 +186,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const prefetchList = Array.from(new Set(prefetchHrefs));
 
   // Derived labels
-  const regionLabel =
-    mode === "city" ? "CITY" : mode === "state" ? "STATE" : "ALL";
-
+  const regionLabel = mode === "city" ? "CITY" : mode === "state" ? "STATE" : "ALL";
   const mainTitle =
     mode === "city" && (city ?? profile?.city)
       ? `Stories in ${city ?? profile?.city}`
@@ -193,8 +196,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   return (
     <>
-      {/* Weekly-best hero with live stats */}
-      <FeaturedHero />
+      {/* Temporarily disabled while we stabilize SSR */}
+      {/* <FeaturedHero /> */}
 
       <div className="container space-y-8">
         {/* Top header with mode toggle + Search */}
@@ -204,16 +207,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             <p className="text-sm text-neutral-600">{sub}</p>
           </div>
 
-          {/* Search (GET) – preserves mode via hidden input */}
+        {/* Search (GET) – preserves mode and any browse override */}
           <form method="GET" className="w-full sm:w-auto">
             <input type="hidden" name="mode" value={mode} aria-hidden="true" />
-            {/* Keep any browsing override in the URL when searching */}
-            {mode === "city" && city && (
-              <input type="hidden" name="city" value={city} />
-            )}
-            {mode === "state" && state && (
-              <input type="hidden" name="state" value={state} />
-            )}
+            {mode === "city" && city && <input type="hidden" name="city" value={city ?? ""} />}
+            {mode === "state" && state && <input type="hidden" name="state" value={state ?? ""} />}
 
             <div className="flex items-center gap-2">
               <div className="relative flex-1 sm:w-80">
@@ -318,12 +316,16 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         <section className="space-y-3">
           <div className="flex items-baseline justify-between">
             <h3 className="text-lg font-semibold">
-              {mainTitle}{" "}
-              <span className="text-xs text-neutral-500 font-normal">
-                ({items.length})
-              </span>
+              {mode === "city" && (city ?? profile?.city)
+                ? `Stories in ${city ?? profile?.city}`
+                : mode === "state" && (state ?? profile?.state)
+                ? `Stories in ${state ?? profile?.state}`
+                : "Latest from across India"}{" "}
+              <span className="text-xs text-neutral-500 font-normal">({items.length})</span>
             </h3>
-            <p className="text-xs text-neutral-500">Region: {regionLabel}</p>
+            <p className="text-xs text-neutral-500">
+              Region: {mode === "city" ? "CITY" : mode === "state" ? "STATE" : "ALL"}
+            </p>
           </div>
 
           {items.length > 0 ? (
@@ -350,9 +352,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
               <h3 className="text-lg font-semibold">
                 Recommended for {profile?.state ? `you in ${profile.state}` : "you"}
               </h3>
-              <p className="text-xs text-neutral-500">
-                Based on what’s popular and your region
-              </p>
+              <p className="text-xs text-neutral-500">Based on what’s popular and your region</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {uniqueRecs.map((r: any) => (
@@ -373,12 +373,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                     </div>
                   )}
                   <div className="p-4">
-                    <div className="text-xs text-neutral-500">
-                      {r.city ?? r.state ?? "—"}
-                    </div>
-                    <h4 className="font-medium leading-snug line-clamp-2">
-                      {r.title}
-                    </h4>
+                    <div className="text-xs text-neutral-500">{r.city ?? r.state ?? "—"}</div>
+                    <h4 className="font-medium leading-snug line-clamp-2">{r.title}</h4>
                   </div>
                 </Link>
               ))}
