@@ -10,19 +10,21 @@ type Ctx = { params: { id: string } };
 
 export async function POST(_req: Request, { params }: Ctx) {
   const sb = supabaseServer();
+  const sba = sb as any;                 // <-- single cast
   const svc = requireSupabaseService();
+  const svca = svc as any;               // <-- single cast
 
   // ---- Must be signed in
-  const { data: userRes } = await sb.auth.getUser();
+  const { data: userRes } = await sba.auth.getUser();
   const user = userRes?.user;
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // ---- Admin/Owner gate (no .catch chaining)
+  // ---- Admin/Owner gate
   const isAdmin = await isAdminOrOwner(sb, user.id);
   if (!isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   // ---- Load the draft (service role read is fine here)
-  const { data: draft, error } = await svc
+  const { data: draft, error } = await svca
     .from("ingest_drafts")
     .select("id, source_url")
     .eq("id", params.id)
@@ -56,7 +58,7 @@ export async function POST(_req: Request, { params }: Ctx) {
   if (!norm) return NextResponse.json({ error: "No normalized data" }, { status: 500 });
 
   // ---- Update the draft with normalized fields
-  const up = await svc
+  const up = await svca
     .from("ingest_drafts")
     .update({
       draft_json: norm,
@@ -80,9 +82,11 @@ export async function POST(_req: Request, { params }: Ctx) {
 
 // ----------------- helpers -----------------
 async function isAdminOrOwner(sb: ReturnType<typeof supabaseServer>, userId: string): Promise<boolean> {
+  const sba = sb as any;                // <-- single cast inside helper
+
   // Try RPC is_admin() first
   try {
-    const { data, error } = await sb.rpc("is_admin").single();
+    const { data, error } = await sba.rpc("is_admin").single();
     if (!error && (data as unknown as boolean) === true) return true;
   } catch {
     // ignore and fall back to role checks
@@ -91,7 +95,7 @@ async function isAdminOrOwner(sb: ReturnType<typeof supabaseServer>, userId: str
   // Fallback: role from user_profiles, then profiles
   let role: string | null = null;
 
-  const up = await sb
+  const up = await sba
     .from("user_profiles")
     .select("role")
     .eq("id", userId)
@@ -99,7 +103,7 @@ async function isAdminOrOwner(sb: ReturnType<typeof supabaseServer>, userId: str
   if (!up.error) role = (up.data as any)?.role ?? null;
 
   if (!role) {
-    const pf = await sb
+    const pf = await sba
       .from("profiles")
       .select("role")
       .eq("id", userId)
