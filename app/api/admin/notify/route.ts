@@ -6,28 +6,24 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // constant-time compare for shared-secret header
+const te = new TextEncoder();
 function safeEqual(a: string, b: string) {
-  const A = Buffer.from(a);
-  const B = Buffer.from(b);
-  if (A.length !== B.length) return false;
-  return timingSafeEqual(A, B);
+  const A = te.encode(a);
+  const B = te.encode(b);
+  if (A.length !== B.length) return false;          // keep timingSafeEqual contract
+  return timingSafeEqual(A, B);                      // Uint8Array satisfies ArrayBufferView
 }
 
 export async function POST(req: Request) {
   const secret = process.env.WEBHOOK_SECRET ?? "";
   const sig = req.headers.get("x-aikya-signature") ?? "";
-
   if (!secret || !safeEqual(sig, secret)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   // best-effort parse (don’t throw)
   let payload: unknown = null;
-  try {
-    payload = await req.json();
-  } catch {
-    payload = null;
-  }
+  try { payload = await req.json(); } catch { payload = null; }
 
   // TODO: send email via Resend/Sendgrid/etc.
   return NextResponse.json({ ok: true });
