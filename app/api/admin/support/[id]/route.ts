@@ -17,7 +17,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const user = userRes?.user;
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // ---- Admin/Owner gate (no .catch chaining)
+  // ---- Admin/Owner gate
   const isAdmin = await isAdminOrOwner(sb, user.id);
   if (!isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
@@ -37,7 +37,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   // ---- Update (service role write)
   const { error } = await svc
-    .from("support_actions")
+    .from("support_actions" as any)
     .update({ status: nextStatus })
     .eq("id", params.id);
 
@@ -52,14 +52,14 @@ async function isAdminOrOwner(sb: ReturnType<typeof supabaseServer>, userId: str
     const { data, error } = await sb.rpc("is_admin").single();
     if (!error && (data as unknown as boolean) === true) return true;
   } catch {
-    // ignore and fall back to role checks
+    /* ignore and fall back */
   }
 
-  // Fallback: role from user_profiles, then profiles
+  // Fallback: role from user_profiles, then profiles (casts + maybeSingle)
   let role: string | null = null;
 
   const up = await sb
-    .from("user_profiles")
+    .from("user_profiles" as any)
     .select("role")
     .eq("id", userId)
     .maybeSingle();
@@ -67,7 +67,7 @@ async function isAdminOrOwner(sb: ReturnType<typeof supabaseServer>, userId: str
 
   if (!role) {
     const pf = await sb
-      .from("profiles")
+      .from("profiles" as any)
       .select("role")
       .eq("id", userId)
       .maybeSingle();
