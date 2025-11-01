@@ -1,58 +1,61 @@
 // lib/supabase/server.ts
 import { cookies, headers } from "next/headers";
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-
-// If you have generated types, replace `any` with your Database type.
-type Database = any;
+import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
 /**
- * Always return a consistently-typed SupabaseClient.
- * Provides a safe shim when env is missing so SSR doesn't crash.
+ * Return a server-aware Supabase client if env is present.
+ * Falls back to a stateless plain client; if env is missing, returns a shim
+ * that will never throw and always yields empty results.
+ *
+ * NOTE: We intentionally return `any` to avoid TS union-callability issues
+ * with PostgREST query builders during Netlify builds.
  */
-export function supabaseServer(): SupabaseClient<Database> {
+export function supabaseServer(): any {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // ---- Safe shim (no env) ----
   if (!url || !anon) {
+    // Minimal shim with the handful of methods we use.
     const q = {
-      select: () => q, eq: () => q, is: () => q, gte: () => q,
-      order: () => q, limit: () => q,
-      maybeSingle: async () => ({ data: null, error: null } as const),
-      single:      async () => ({ data: null, error: null } as const),
-      insert:      async () => ({ data: null, error: null } as const),
-      upsert:      async () => ({ data: null, error: null } as const),
-      update:      async () => ({ data: null, error: null } as const),
-      delete:      async () => ({ data: null, error: null } as const),
+      select: () => q,
+      eq: () => q,
+      is: () => q,
+      gte: () => q,
+      order: () => q,
+      limit: () => q,
+      maybeSingle: async () => ({ data: null, error: null }),
+      single: async () => ({ data: null, error: null }),
+      insert: async () => ({ data: null, error: null }),
+      upsert: async () => ({ data: null, error: null }),
+      update: async () => ({ data: null, error: null }),
+      delete: async () => ({ data: null, error: null }),
     };
-
-    const stub = {
-      from: (_: string) => q,
-      rpc:  async (_fn: string, _args?: Record<string, unknown>) =>
-        ({ data: null, error: null } as const),
-      auth: {
-        getUser: async () => ({ data: { user: null }, error: null } as const),
+    return {
+      from() {
+        return q;
       },
-    } as unknown as SupabaseClient<Database>;
-
-    return stub;
+      rpc: async () => ({ data: null, error: null }),
+      auth: {
+        getUser: async () => ({ data: { user: null }, error: null }),
+      },
+    } as any;
   }
 
-  // ---- Real server client (with cookies) ----
   try {
-    return createServerClient<Database>(url, anon, {
+    // Proper server client (with auth cookie wiring)
+    return createServerClient(url, anon, {
       cookies: {
         get: (name: string) => cookies().get(name)?.value,
-        set: (name: string, value: string, options: CookieOptions) =>
+        set: (name: string, value: string, options: any) =>
           cookies().set({ name, value, ...options }),
-        remove: (name: string, options: CookieOptions) =>
+        remove: (name: string, options: any) =>
           cookies().set({ name, value: "", ...options }),
       },
       global: { headers: headers() },
-    }) as unknown as SupabaseClient<Database>;
+    }) as any;
   } catch {
-    // Fallback: plain client (no cookie wiring)
-    return createClient<Database>(url, anon, { auth: { persistSession: false } });
+    // Fallback to plain client (no cookies) – still safe
+    return createClient(url, anon, { auth: { persistSession: false } }) as any;
   }
 }
