@@ -32,15 +32,16 @@ function digestHtml(items: any[], site: string, range: string) {
 
 async function isAdminOrOwner(): Promise<boolean> {
   const sb = supabaseServer();
+  const sba = sb as any; // ← cast once to avoid Netlify’s TS union “.from not callable” issue
 
   // Must be signed in
-  const { data: userRes } = await sb.auth.getUser();
+  const { data: userRes } = await sba.auth.getUser();
   const user = userRes?.user;
   if (!user) return false;
 
   // Try RPC is_admin() first
   try {
-    const { data, error } = await sb.rpc("is_admin").single();
+    const { data, error } = await sba.rpc("is_admin").single();
     if (!error && (data as unknown as boolean) === true) return true;
   } catch {
     // ignore; fall back to role tables
@@ -49,7 +50,7 @@ async function isAdminOrOwner(): Promise<boolean> {
   // Fallback role from user_profiles then profiles
   let role: string | null = null;
 
-  const up = await sb
+  const up = await sba
     .from("user_profiles")
     .select("role")
     .eq("id", user.id)
@@ -57,7 +58,7 @@ async function isAdminOrOwner(): Promise<boolean> {
   if (!up.error) role = (up.data as any)?.role ?? null;
 
   if (!role) {
-    const pf = await sb
+    const pf = await sba
       .from("profiles")
       .select("role")
       .eq("id", user.id)
@@ -79,7 +80,9 @@ export async function GET() {
 
   // mock last 7d preview via anon server client (published only)
   const sb = supabaseServer();
-  const { data } = await sb
+  const sba = sb as any; // ← cast once and reuse
+
+  const { data } = await sba
     .from("stories")
     .select("slug,title,dek,state,city,published_at,like_count")
     .eq("is_published", true)
