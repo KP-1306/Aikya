@@ -10,19 +10,21 @@ type Ctx = { params: { id: string } };
 
 export async function POST(_req: Request, { params }: Ctx) {
   const sb = supabaseServer();
+  const sba = sb as any;                // ← cast once
   const svc = requireSupabaseService();
+  const svca = svc as any;              // ← cast once
 
   // ---- Must be signed in
-  const { data: userRes } = await sb.auth.getUser();
+  const { data: userRes } = await sba.auth.getUser();
   const user = userRes?.user;
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // ---- Admin/Owner gate (no .catch chaining)
-  const isAdmin = await isAdminOrOwner(sb, user.id);
+  // ---- Admin/Owner gate
+  const isAdmin = await isAdminOrOwner(sba, user.id);
   if (!isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   // ---- Load draft
-  const { data: draft, error } = await svc
+  const { data: draft, error } = await svca
     .from("ingest_drafts")
     .select("*")
     .eq("id", params.id)
@@ -62,22 +64,22 @@ export async function POST(_req: Request, { params }: Ctx) {
   };
 
   // ---- Insert story
-  const ins = await svc.from("stories").insert(payload).select("id, slug").single();
+  const ins = await svca.from("stories").insert(payload).select("id, slug").single();
   if (ins.error) {
     return NextResponse.json({ error: ins.error.message }, { status: 500 });
   }
 
   // ---- Mark draft as published (best-effort)
-  await svc.from("ingest_drafts").update({ status: "published" }).eq("id", params.id);
+  await svca.from("ingest_drafts").update({ status: "published" }).eq("id", params.id);
 
   return NextResponse.json({ ok: true, story: ins.data });
 }
 
 // ----------------- helpers -----------------
-async function isAdminOrOwner(sb: ReturnType<typeof supabaseServer>, userId: string): Promise<boolean> {
+async function isAdminOrOwner(sba: any, userId: string): Promise<boolean> {
   // Try RPC is_admin() first
   try {
-    const { data, error } = await sb.rpc("is_admin").single();
+    const { data, error } = await sba.rpc("is_admin").single();
     if (!error && (data as unknown as boolean) === true) return true;
   } catch {
     // ignore and fall back to role checks
@@ -86,19 +88,11 @@ async function isAdminOrOwner(sb: ReturnType<typeof supabaseServer>, userId: str
   // Fallback: role from user_profiles, then profiles
   let role: string | null = null;
 
-  const up = await sb
-    .from("user_profiles")
-    .select("role")
-    .eq("id", userId)
-    .maybeSingle();
+  const up = await sba.from("user_profiles").select("role").eq("id", userId).maybeSingle();
   if (!up.error) role = (up.data as any)?.role ?? null;
 
   if (!role) {
-    const pf = await sb
-      .from("profiles")
-      .select("role")
-      .eq("id", userId)
-      .maybeSingle();
+    const pf = await sba.from("profiles").select("role").eq("id", userId).maybeSingle();
     if (!pf.error) role = (pf.data as any)?.role ?? null;
   }
 
