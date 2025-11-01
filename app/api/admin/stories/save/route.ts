@@ -15,27 +15,23 @@ async function isAdminOrOwner(): Promise<boolean> {
   const user = userRes?.user;
   if (!user) return false;
 
-  // Prefer RPC if present
   try {
-    const { data, error } = await sb.rpc("is_admin").single();
+    const { data, error } = await (sb as any).rpc("is_admin").single();
     if (!error && (data as unknown as boolean) === true) return true;
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
 
-  // Fallback: user_profiles → profiles (safe casts + maybeSingle)
   let role: string | null = null;
 
-  const up = await sb
-    .from("user_profiles" as any)
+  const up = await (sb as any)
+    .from("user_profiles")
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
   if (!up.error) role = (up.data as any)?.role ?? null;
 
   if (!role) {
-    const pf = await sb
-      .from("profiles" as any)
+    const pf = await (sb as any)
+      .from("profiles")
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
@@ -89,9 +85,7 @@ function coercePayload(raw: any): { id: string; update: Record<string, any> } {
     if (k === "sources") {
       try {
         update.sources = typeof raw.sources === "string" ? JSON.parse(raw.sources) : raw.sources;
-      } catch {
-        // ignore bad JSON
-      }
+      } catch { /* ignore bad JSON */ }
       continue;
     }
 
@@ -101,7 +95,6 @@ function coercePayload(raw: any): { id: string; update: Record<string, any> } {
 }
 
 export async function POST(req: Request) {
-  // AuthZ
   if (!(await isAdminOrOwner())) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
@@ -124,7 +117,7 @@ export async function POST(req: Request) {
 
   // Slug uniqueness (only when provided)
   if (update.slug) {
-    const svc = requireSupabaseService(); // use service client for reliable read
+    const svc = requireSupabaseService(); // service client for reliable read
     const { data: dup, error: dupErr } = await svc
       .from("stories" as any)
       .select("id")
@@ -143,13 +136,8 @@ export async function POST(req: Request) {
   const { error } = await svc.from("stories" as any).update(update).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Browser vs API caller UX
   if (wantsHtml(req)) {
     return NextResponse.redirect(new URL("/admin/(content)/drafts", req.url));
   }
   return NextResponse.json({ ok: true, id, updated: Object.keys(update) });
-}
-
-export async function GET() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }
