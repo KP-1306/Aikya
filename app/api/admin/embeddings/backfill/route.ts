@@ -17,7 +17,7 @@ type StoryRow = {
 };
 
 const OPENAI_URL = "https://api.openai.com/v1/embeddings";
-const OPENAI_MODEL = "text-embedding-3-small"; // 1536 dims – matches your pgvector column
+const OPENAI_MODEL = "text-embedding-3-small"; // 1536 dims
 
 // ---------- helpers ----------
 function isString(x: unknown): x is string {
@@ -32,19 +32,19 @@ function normalize(vec: number[]): number[] {
 
 function buildEmbedText(r: StoryRow): string {
   const parts = [r.title, r.dek, r.what, r.how, r.why].filter(Boolean) as string[];
-  // Keep it compact and deterministic
   return parts.join("\n\n").slice(0, 8000);
 }
 
 async function isAdmin(): Promise<boolean> {
   const sb = supabaseServer();
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
+  const sba = sb as any; // ← cast once to dodge Netlify TS union issue
+
+  const { data: userRes } = await sba.auth.getUser();
+  const user = userRes?.user;
   if (!user) return false;
 
   // 1) preferred: admins table
-  const { data: admin } = await sb
+  const { data: admin } = await sba
     .from("admins")
     .select("user_id")
     .eq("user_id", user.id)
@@ -52,19 +52,20 @@ async function isAdmin(): Promise<boolean> {
   if (admin) return true;
 
   // 2) fallback: profiles.role
-  const { data: prof } = await sb
+  const { data: prof } = await sba
     .from("profiles")
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
   if (prof?.role === "admin") return true;
 
-  // 3) optional RPC (ignore failures)
+  // 3) optional RPC
   try {
-    const { data } = await sb.rpc("is_admin").single();
+    const { data } = await sba.rpc("is_admin").single();
     if (data === true) return true;
-    // eslint-disable-next-line no-empty
-  } catch {}
+  } catch {
+    /* ignore */
+  }
 
   return false;
 }
@@ -102,45 +103,40 @@ async function persistVector(
   storyId: string,
   vector: number[]
 ): Promise<void> {
-  // First try the RPC set_story_embedding(p_id uuid, p_embedding float8[])
+  const svca = svc as any; // ← cast once
+
+  // First try RPC: set_story_embedding(p_id uuid, p_embedding float8[])
   try {
-    const { error } = await svc.rpc("set_story_embedding", {
+    const { error } = await svca.rpc("set_story_embedding", {
       p_id: storyId,
       p_embedding: vector as unknown as number[],
     });
     if (!error) return;
-    // If RPC exists but failed, throw the underlying error
-    // (common causes: RLS, type mismatch, etc.)
     throw new Error(error.message);
   } catch (e: any) {
     const msg = String(e?.message ?? e);
     const unknownFunction =
       msg.includes("function set_story_embedding") ||
       msg.includes("does not exist") ||
-      msg.includes("42883"); // undefined function
+      msg.includes("42883");
 
-    if (!unknownFunction) {
-      // It's not a "function doesn't exist" error → bubble up.
-      throw e;
-    }
+    if (!unknownFunction) throw e;
 
-    // Fallback: upsert directly into stories
+    // Fallback upsert
     const now = new Date().toISOString();
-    const { error: upErr } = await svc
+    const { error: upErr } = await svca
       .from("stories")
       .upsert(
         [
           {
             id: storyId,
-            embedding: vector as unknown as any, // supabase-js casts float array -> vector
+            embedding: vector as unknown as any,
             embedding_updated_at: now,
           },
         ],
         { onConflict: "id", ignoreDuplicates: false }
       );
-    if (upErr) {
-      throw new Error(upErr.message);
-    }
+    if (upErr) throw new Error(upErr.message);
   }
 }
 
@@ -148,8 +144,10 @@ async function selectBatch(
   svc: ReturnType<typeof requireSupabaseService>,
   limit: number
 ): Promise<StoryRow[]> {
-  // Prefer the helper view if present (created in earlier migration)
-  const { data: viewRows, error: viewErr } = await svc
+  const svca = svc as any; // ← cast once
+
+  // Prefer helper view if present
+  const { data: viewRows, error: viewErr } = await svca
     .from("stories_needing_embedding")
     .select("id, slug, title, dek, what, how, why, published_at")
     .order("published_at", { ascending: false })
@@ -157,8 +155,8 @@ async function selectBatch(
 
   if (!viewErr && Array.isArray(viewRows)) return viewRows as StoryRow[];
 
-  // Fallback: simple selector — published + no embedding + not soft-deleted
-  const { data: fallback, error: selErr } = await svc
+  // Fallback: published + no embedding + not deleted
+  const { data: fallback, error: selErr } = await svca
     .from("stories")
     .select("id, slug, title, dek, what, how, why, published_at, embedding")
     .eq("is_published", true)
@@ -188,7 +186,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Inputs from query or JSON body
+    // Inputs
     const url = new URL(req.url);
     const qpLimit = url.searchParams.get("limit");
     const qpDry = url.searchParams.get("dryRun");
@@ -199,10 +197,7 @@ export async function POST(req: Request) {
 
     const limit = Math.min(
       100,
-      Math.max(
-        1,
-        Number.isFinite(Number(qpLimit)) ? Number(qpLimit) : body.limit ?? 25
-      )
+      Math.max(1, Number.isFinite(Number(qpLimit)) ? Number(qpLimit) : body.limit ?? 25)
     );
     const dryRun =
       (qpDry ? qpDry === "true" : body.dryRun ?? false) === true ? true : false;
@@ -215,11 +210,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ updated: 0, dryRun, items: [] });
     }
 
-    // Prepare texts and embed in chunks to respect token/size limits
+    // Embed (chunked)
     const texts = rows.map(buildEmbedText);
-    const chunkSize = 96; // safe for embeddings API; adjust if needed
+    const chunkSize = 96;
     const vectors: number[][] = [];
-
     for (let i = 0; i < texts.length; i += chunkSize) {
       const chunk = texts.slice(i, i + chunkSize);
       const vecs = await embedBatch(chunk, key);
