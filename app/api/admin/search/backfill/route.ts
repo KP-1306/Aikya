@@ -10,14 +10,23 @@ const OPENAI_URL = "https://api.openai.com/v1/embeddings";
 const MODEL = "text-embedding-3-small";
 const DIMS = 1536;
 
-// Optional: enable if you want unit-normed vectors
-function normalize(vec: number[]): number[] {
-  let n = Math.sqrt(vec.reduce((s, v) => s + v * v, 0));
-  if (!n || !Number.isFinite(n)) n = 1;
-  return vec.map((v) => v / n);
+function toEmbedText(row: any): string {
+  const parts = [
+    row.title ?? "",
+    row.dek ?? "",
+    row.what ?? "",
+    row.how ?? "",
+    row.why ?? "",
+    row.life_lesson ?? row.lifeLesson ?? "",
+  ]
+    .map((s) => (typeof s === "string" ? s.trim() : ""))
+    .filter(Boolean);
+
+  const text = parts.join("\n\n").slice(0, 8000);
+  return text.length ? text : (row.title ?? "");
 }
 
-// naive retry (handles 429)
+// naive retry (handles 429 and surfaces other errors)
 async function embed(texts: string[]): Promise<number[][]> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY not configured");
@@ -48,22 +57,6 @@ async function embed(texts: string[]): Promise<number[][]> {
   throw new Error("Embeddings failed after retries");
 }
 
-function toEmbedText(row: any): string {
-  const parts = [
-    row.title ?? "",
-    row.dek ?? "",
-    row.what ?? "",
-    row.how ?? "",
-    row.why ?? "",
-    row.life_lesson ?? row.lifeLesson ?? "",
-  ]
-    .map((s) => (typeof s === "string" ? s.trim() : ""))
-    .filter(Boolean);
-
-  const text = parts.join("\n\n").slice(0, 8000);
-  return text.length ? text : (row.title ?? "");
-}
-
 async function assertAdmin() {
   const sb = supabaseServer();
   const {
@@ -72,23 +65,27 @@ async function assertAdmin() {
   if (!user) return false;
 
   try {
-    const { data, error } = await sb.rpc("is_admin").single();
+    const { data, error } = await (sb as any).rpc("is_admin").single();
     if (!error && (data as unknown as boolean) === true) return true;
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
 
-  // fallbacks
-  const { data: a } = await sb.from("admins" as any).select("user_id").eq("user_id", user.id).maybeSingle();
+  const { data: a } = await (sb as any)
+    .from("admins")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
   if (a) return true;
 
-  const { data: p } = await sb.from("profiles" as any).select("role").eq("id", user.id).maybeSingle();
+  const { data: p } = await (sb as any)
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
   return p?.role === "admin" || p?.role === "owner";
 }
 
 export async function POST(req: Request) {
   try {
-    // AuthZ
     if (!(await assertAdmin())) {
       return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
     }
@@ -132,10 +129,8 @@ export async function POST(req: Request) {
     for (let pi = 0; pi < payload.length; pi++) {
       const v = vectors[vi++];
       if (Array.isArray(v) && v.length === DIMS) {
-        // const vec = normalize(v); // <- enable if you want unit-norm
-        const vec = v;
         const row = rows[payload[pi].i];
-        updates.push({ id: row.id, embedding: vec });
+        updates.push({ id: row.id, embedding: v });
       }
     }
 
