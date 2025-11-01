@@ -1,12 +1,12 @@
 // lib/supabase/server.ts
-import { cookies } from "next/headers";
-import { createServerClient, type SupabaseClient } from "@supabase/auth-helpers-nextjs";
-import { createClient } from "@supabase/supabase-js";
+import { cookies, headers } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Server-aware Supabase client for Next.js (SSR/Route Handlers).
- * Returns a generic-erased SupabaseClient to avoid union overload issues
- * during Netlify/Next type-checking.
+ * Return a server-aware Supabase client for Next.js Route Handlers/SSR.
+ * We erase generics on the return type to avoid union-overload issues
+ * (the “This expression is not callable” error on .from()) during build.
  */
 export function supabaseServer(): SupabaseClient<any, any, any> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -59,12 +59,13 @@ export function supabaseServer(): SupabaseClient<any, any, any> {
         remove: (name: string, options: any) =>
           cookieStore.set({ name, value: "", ...options }),
       },
+      global: { headers: headers() },
     });
 
-    // Erase generics to avoid union-of-overloads on .from(...)
+    // Erase generics to prevent type-union overloads on .from(...)
     return client as unknown as SupabaseClient<any, any, any>;
   } catch {
-    // Fallback: plain client without cookies (still works for anon reads/RPCs)
+    // Fallback: plain client without cookies (still fine for anon reads/RPCs)
     const plain = createClient(url, anon, { auth: { persistSession: false } });
     return plain as unknown as SupabaseClient<any, any, any>;
   }
